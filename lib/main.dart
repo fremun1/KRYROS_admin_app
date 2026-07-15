@@ -45,84 +45,218 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late AnimationController _blinkController;
+  late AnimationController _bounceController;
+  bool _isFadingOut = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    
+    // Pulse rings animation
+    _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
-    )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 1.0, end: 1.2).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    )..repeat();
 
-    Timer(const Duration(seconds: 3), () {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => WebViewPage(url: widget.url)),
-      );
+    // Blink logo and text animation
+    _blinkController = AnimationController(
+      duration: const Duration(milliseconds: 1600),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    // Bouncing dots animation
+    _bounceController = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    )..repeat();
+
+    // Navigation timer
+    Timer(const Duration(milliseconds: 2200), () {
+      if (mounted) {
+        setState(() {
+          _isFadingOut = true;
+        });
+        Timer(const Duration(milliseconds: 400), () {
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => WebViewPage(url: widget.url),
+                transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                transitionDuration: const Duration(milliseconds: 400),
+              ),
+            );
+          }
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pulseController.dispose();
+    _blinkController.dispose();
+    _bounceController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    const backgroundColor = Color(0xFF0D1826);
+    const primaryColor = Color(0xFF1FA89A);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1826),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ScaleTransition(
-              scale: _animation,
-              child: Container(
-                width: 150,
-                height: 150,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFF1FA89A).withOpacity(0.8),
-                    width: 4.0,
+      backgroundColor: backgroundColor,
+      body: AnimatedOpacity(
+        opacity: _isFadingOut ? 0.0 : 1.0,
+        duration: const Duration(milliseconds: 400),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Pulsing rings around logo
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  ...List.generate(3, (index) {
+                    return AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, child) {
+                        final delay = index * 0.35;
+                        double progress = (_pulseController.value - delay);
+                        if (progress < 0) progress += 1.0;
+                        
+                        final scale = 0.85 + (progress * 0.4);
+                        final opacity = progress < 0.6 
+                            ? (0.9 - (progress / 0.6 * 0.55))
+                            : (0.35 - ((progress - 0.6) / 0.4 * 0.35));
+
+                        return Transform.scale(
+                          scale: scale,
+                          child: Opacity(
+                            opacity: opacity.clamp(0.0, 1.0),
+                            child: Container(
+                              width: 64.0 + (index + 1) * 30.0,
+                              height: 64.0 + (index + 1) * 30.0,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: primaryColor.withOpacity(0.5 - (index + 1) * 0.12),
+                                  width: index == 0 ? 2.5 : 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  }),
+                  // Logo with blink effect
+                  FadeTransition(
+                    opacity: Tween<double>(begin: 1.0, end: 0.45).animate(
+                      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: primaryColor.withOpacity(0.8),
+                          width: 2.5,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'assets/logo_circular.png',
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              // Brand name with blink effect
+              FadeTransition(
+                opacity: Tween<double>(begin: 1.0, end: 0.45).animate(
+                  CurvedAnimation(
+                    parent: _blinkController,
+                    curve: const Interval(0.125, 1.0, curve: Curves.easeInOut),
                   ),
                 ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/logo_circular.png',
-                    fit: BoxFit.cover,
-                  ),
+                child: Column(
+                  children: [
+                    const Text(
+                      'KRYROS ADMIN',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 3.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'CONTROL PANEL',
+                      style: TextStyle(
+                        color: primaryColor.withOpacity(0.9),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 4.0,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
-            const Text(
-              'KRYROS ADMIN',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
+              const SizedBox(height: 24),
+              // Bouncing loading dots
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (index) {
+                  return AnimatedBuilder(
+                    animation: _bounceController,
+                    builder: (context, child) {
+                      final delay = index * 0.18;
+                      double progress = (_bounceController.value - delay);
+                      if (progress < 0) progress += 1.0;
+
+                      final yOffset = progress < 0.5
+                          ? -8.0 * (progress / 0.5)
+                          : -8.0 * (1.0 - (progress - 0.5) / 0.5);
+                      
+                      final opacity = progress < 0.5
+                          ? 0.35 + (0.65 * (progress / 0.5))
+                          : 1.0 - (0.65 * ((progress - 0.5) / 0.5));
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                        child: Transform.translate(
+                          offset: Offset(0, yOffset),
+                          child: Opacity(
+                            opacity: opacity.clamp(0.35, 1.0),
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: primaryColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }),
               ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Control Panel',
-              style: TextStyle(
-                color: Color(0xFF1FA89A),
-                fontSize: 14,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
