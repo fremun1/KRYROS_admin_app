@@ -87,11 +87,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               child: Container(
                 width: 150,
                 height: 150,
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF1FA89A), width: 4),
-                  image: const DecorationImage(
-                    image: AssetImage('assets/logo.png'),
+                  border: Border.all(
+                    color: const Color(0xFF1FA89A).withOpacity(0.8),
+                    width: 4.0,
+                  ),
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/logo_circular.png',
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -272,7 +278,7 @@ class _WebViewPageState extends State<WebViewPage> with SingleTickerProviderStat
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(8.0),
-                          child: Image.asset('assets/logo.png'),
+                          child: ClipOval(child: Image.asset('assets/logo_circular.png')),
                         ),
                       );
                     },
