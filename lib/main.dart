@@ -341,7 +341,7 @@ class _WebViewPageState extends State<WebViewPage> {
           notification.hashCode,
           notification.title,
           notification.body,
-          notificationDetails: NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               'kryros_admin_notifications',
               'KRYROS Admin Notifications',
