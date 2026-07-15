@@ -341,7 +341,7 @@ class _WebViewPageState extends State<WebViewPage> {
           notification.hashCode,
           notification.title,
           notification.body,
-          NotificationDetails(
+          notificationDetails: NotificationDetails(
             android: AndroidNotificationDetails(
               'kryros_admin_notifications',
               'KRYROS Admin Notifications',
@@ -364,13 +364,13 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _registerPublicToken() async {
     if (_fcmToken == null) return;
-    final String jsCode = "if(window.registerPublicToken) window.registerPublicToken('');";
+    final String jsCode = "if(window.registerPublicToken) window.registerPublicToken('$_fcmToken');";
     await _controller.runJavaScript(jsCode);
   }
 
   Future<void> _registerTokenWithSession() async {
     if (_fcmToken == null) return;
-    final String jsCode = "if(window.registerTokenWithSession) window.registerTokenWithSession('');";
+    final String jsCode = "if(window.registerTokenWithSession) window.registerTokenWithSession('$_fcmToken');";
     await _controller.runJavaScript(jsCode);
   }
 
