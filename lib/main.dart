@@ -286,6 +286,8 @@ class _WebViewPageState extends State<WebViewPage> {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   double _progress = 0;
   bool _isOffline = false;
+  bool _isWebViewReady = false;       // tracks whether WebView has finished first load
+  String? _pendingDeepLinkUrl;        // URL to navigate to once WebView is ready
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -349,26 +351,43 @@ class _WebViewPageState extends State<WebViewPage> {
       await _registerTokens();
     });
 
-    // Handle Initial Message (When app is closed)
-    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null && initialMessage.data['url'] != null) {
-      _loadUrl(initialMessage.data['url']);
-    }
-
-    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('launcher_icon');
-    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+    // ── Local notifications (foreground) ──────────────────────────────────────
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('launcher_icon');
+    const DarwinInitializationSettings initializationSettingsIOS =
+        DarwinInitializationSettings(
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        );
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+    );
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        if (response.payload != null) {
-          _loadUrl(response.payload!);
+        if (response.payload != null && response.payload!.isNotEmpty) {
+          _navigateToUrl(response.payload!);
         }
       },
     );
 
+    // ── App opened from a terminated state via notification ───────────────────
+    // getInitialMessage() fires BEFORE the WebView is ready; queue the URL.
+    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      final String? url = initialMessage.data['url'] ?? initialMessage.data['link'];
+      if (url != null && url.isNotEmpty) {
+        _pendingDeepLinkUrl = url;
+      }
+    }
+
+    // ── App in foreground — show local notification with payload ──────────────
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      RemoteNotification? notification = message.notification;
+      final RemoteNotification? notification = message.notification;
       if (notification != null) {
+        final String? payload = message.data['url'] ?? message.data['link'];
         flutterLocalNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
@@ -381,17 +400,33 @@ class _WebViewPageState extends State<WebViewPage> {
               priority: Priority.high,
               icon: 'launcher_icon',
             ),
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
-          payload: message.data['url'],
+          payload: (payload != null && payload.isNotEmpty) ? payload : null,
         );
       }
     });
 
+    // ── App in background, user taps notification ─────────────────────────────
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (message.data['url'] != null) {
-        _loadUrl(message.data['url']);
+      final String? url = message.data['url'] ?? message.data['link'];
+      if (url != null && url.isNotEmpty) {
+        _navigateToUrl(url);
       }
     });
+  }
+
+  /// Navigate to [url] immediately if the WebView is ready, otherwise queue it.
+  void _navigateToUrl(String url) {
+    if (_isWebViewReady && _webViewController != null) {
+      _loadUrl(url);
+    } else {
+      _pendingDeepLinkUrl = url;
+    }
   }
 
   Future<void> _registerNativeToken(String token) async {
@@ -497,6 +532,18 @@ class _WebViewPageState extends State<WebViewPage> {
                         });
                         widget.onPageFinished();
                         _registerTokens();
+
+                        // Mark WebView as ready and flush any pending deep-link navigation
+                        if (!_isWebViewReady) {
+                          _isWebViewReady = true;
+                          if (_pendingDeepLinkUrl != null) {
+                            final pending = _pendingDeepLinkUrl!;
+                            _pendingDeepLinkUrl = null;
+                            Future.delayed(const Duration(milliseconds: 500), () {
+                              if (mounted) _loadUrl(pending);
+                            });
+                          }
+                        }
                       },
                       onReceivedError: (controller, request, error) {
                         debugPrint("WebView Error: ${error.description}");
