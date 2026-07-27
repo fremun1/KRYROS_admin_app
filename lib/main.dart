@@ -29,7 +29,7 @@ void main() async {
   if (Platform.isAndroid) {
     await Permission.notification.request();
   }
-
+  
   runApp(const KryrosAdminApp());
 }
 
@@ -42,12 +42,12 @@ class KryrosAdminApp extends StatelessWidget {
       title: 'KRYROS Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xFF1FA89A),
+        primaryColor: const Color(0xFF27B9AF),
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1FA89A),
-          primary: const Color(0xFF1FA89A),
-          surface: const Color(0xFF0D1826),
+          seedColor: const Color(0xFF27B9AF),
+          primary: const Color(0xFF27B9AF),
+          surface: const Color(0xFF050816),
         ),
       ),
       home: const MainContainer(url: 'https://admin.kryros.com'),
@@ -73,7 +73,7 @@ class _MainContainerState extends State<MainContainer> {
         _isWebViewReady = true;
       });
       // Delay slightly to ensure smooth transition
-      Future.delayed(const Duration(milliseconds: 800), () {
+      Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
           setState(() {
             _showSplash = false;
@@ -112,47 +112,46 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
   late AnimationController _pulseController;
-  late AnimationController _blinkController;
   late AnimationController _bounceController;
+  late AnimationController _blinkController;
 
   @override
   void initState() {
     super.initState();
-    
     _pulseController = AnimationController(
-      duration: const Duration(seconds: 2),
       vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+
+    _bounceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
     )..repeat();
 
     _blinkController = AnimationController(
-      duration: const Duration(milliseconds: 1600),
       vsync: this,
+      duration: const Duration(seconds: 1),
     )..repeat(reverse: true);
-
-    _bounceController = AnimationController(
-      duration: const Duration(milliseconds: 900),
-      vsync: this,
-    )..repeat();
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
-    _blinkController.dispose();
     _bounceController.dispose();
+    _blinkController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFF0D1826);
-    const primaryColor = Color(0xFF1FA89A);
+    const primaryColor = Color(0xFF27B9AF);
+    const backgroundColor = Color(0xFF050816);
 
     return Scaffold(
       backgroundColor: backgroundColor,
       body: AnimatedOpacity(
         opacity: widget.isTransitioning ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 500),
+        duration: const Duration(milliseconds: 800),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -167,12 +166,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         final delay = index * 0.35;
                         double progress = (_pulseController.value - delay);
                         if (progress < 0) progress += 1.0;
-                        
                         final scale = 0.85 + (progress * 0.4);
                         final opacity = progress < 0.6 
                             ? (0.9 - (progress / 0.6 * 0.55))
                             : (0.35 - ((progress - 0.6) / 0.4 * 0.35));
-
                         return Transform.scale(
                           scale: scale,
                           child: Opacity(
@@ -233,7 +230,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   'KRYROS ADMIN',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 26,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 4.0,
                   ),
@@ -249,29 +246,16 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       final delay = index * 0.2;
                       double progress = (_bounceController.value - delay);
                       if (progress < 0) progress += 1.0;
-
-                      final yOffset = progress < 0.5
-                          ? -10.0 * (progress / 0.5)
-                          : -10.0 * (1.0 - (progress - 0.5) / 0.5);
-                      
-                      final opacity = progress < 0.5
-                          ? 0.4 + (0.6 * (progress / 0.5))
-                          : 1.0 - (0.6 * ((progress - 0.5) / 0.5));
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                        child: Transform.translate(
-                          offset: Offset(0, yOffset),
-                          child: Opacity(
-                            opacity: opacity.clamp(0.4, 1.0),
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
+                      final offset = -8.0 * (1.0 - (progress - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+                      return Transform.translate(
+                        offset: Offset(0, offset),
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: const BoxDecoration(
+                            color: primaryColor,
+                            shape: BoxShape.circle,
                           ),
                         ),
                       );
@@ -300,7 +284,6 @@ class _WebViewPageState extends State<WebViewPage> {
   InAppWebViewController? _webViewController;
   PullToRefreshController? _pullToRefreshController;
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-  
   double _progress = 0;
   bool _isOffline = false;
   String? _fcmToken;
@@ -315,11 +298,10 @@ class _WebViewPageState extends State<WebViewPage> {
     super.initState();
     _setupNotifications();
     _checkConnectivity();
-    
     _pullToRefreshController = PullToRefreshController(
       settings: PullToRefreshSettings(
-        color: const Color(0xFF1FA89A),
-        backgroundColor: const Color(0xFF0D1826),
+        color: const Color(0xFF27B9AF),
+        backgroundColor: const Color(0xFF050816),
       ),
       onRefresh: () async {
         if (Platform.isAndroid) {
@@ -357,7 +339,6 @@ class _WebViewPageState extends State<WebViewPage> {
   Future<void> _setupNotifications() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
-
     _fcmToken = await messaging.getToken();
     if (_fcmToken != null) {
       await _registerNativeToken(_fcmToken!);
@@ -376,7 +357,6 @@ class _WebViewPageState extends State<WebViewPage> {
 
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('launcher_icon');
     const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-    
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
@@ -421,7 +401,7 @@ class _WebViewPageState extends State<WebViewPage> {
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode({
         'token': token,
-        'platform': Platform.isIOS ? 'ios' : 'android',
+        'platform': Platform.isIOS ? 'ios' : 'admin_android',
       }));
       final response = await request.close();
       await response.drain();
@@ -442,7 +422,6 @@ class _WebViewPageState extends State<WebViewPage> {
   Future<void> _registerTokens() async {
     final token = _fcmToken;
     if (token == null || _webViewController == null) return;
-
     await _registerNativeToken(token);
     final encodedToken = jsonEncode(token);
     await _webViewController?.evaluateJavascript(source: '''
@@ -454,14 +433,14 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1826),
+      backgroundColor: const Color(0xFF050816),
       body: SafeArea(
         child: Column(
           children: [
             if (_progress < 1.0 && !_isOffline)
               LinearProgressIndicator(
                 value: _progress,
-                color: const Color(0xFF1FA89A),
+                color: const Color(0xFF27B9AF),
                 backgroundColor: Colors.transparent,
                 minHeight: 2,
               ),
@@ -494,6 +473,10 @@ class _WebViewPageState extends State<WebViewPage> {
                         cacheEnabled: true,
                         clearCache: false,
                         supportZoom: false,
+                        preferredContentMode: UserPreferredContentMode.MOBILE,
+                        userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+                        mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                        allowContentAccess: true,
                       ),
                       pullToRefreshController: _pullToRefreshController,
                       onWebViewCreated: (controller) {
@@ -501,7 +484,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         controller.addJavaScriptHandler(
                           handlerName: 'MobileBridge',
                           callback: (args) {
-                            if (args.isNotEmpty && args[0] == 'user_logged_in') {
+                            if (args.isNotEmpty && args[0] == 'admin_logged_in') {
                               _registerTokens();
                             }
                           },
@@ -513,7 +496,11 @@ class _WebViewPageState extends State<WebViewPage> {
                           _progress = 1.0;
                         });
                         widget.onPageFinished();
-                        _registerTokens(); // Attempt registration on every page load
+                        _registerTokens();
+                      },
+                      onReceivedError: (controller, request, error) {
+                        debugPrint("WebView Error: ${error.description}");
+                        _pullToRefreshController?.endRefreshing();
                       },
                       onProgressChanged: (controller, progress) {
                         if (progress == 100) {
@@ -537,7 +524,7 @@ class _WebViewPageState extends State<WebViewPage> {
                   ),
                   if (_isOffline)
                     Container(
-                      color: const Color(0xFF0D1826),
+                      color: const Color(0xFF050816),
                       child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -556,7 +543,7 @@ class _WebViewPageState extends State<WebViewPage> {
                             const SizedBox(height: 24),
                             ElevatedButton(
                               onPressed: () => _webViewController?.reload(),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1FA89A)),
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF27B9AF)),
                               child: const Text('Retry', style: TextStyle(color: Colors.white)),
                             ),
                           ],
