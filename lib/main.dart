@@ -459,7 +459,11 @@ class _WebViewPageState extends State<WebViewPage> {
     if (token == null || _webViewController == null) return;
     await _registerNativeToken(token);
     final encodedToken = jsonEncode(token);
+    // Set window.kryrosIsNativeApp = true so the website JS skips re-registering
+    // this token as platform='web', which would overwrite the correct 'admin_android'/'ios'
+    // platform value already sent via the native API.
     await _webViewController?.evaluateJavascript(source: '''
+      window.kryrosIsNativeApp = true;
       window.kryrosNativeFcmToken = $encodedToken;
       window.dispatchEvent(new CustomEvent('kryros:native-fcm-token', { detail: $encodedToken }));
     ''');
