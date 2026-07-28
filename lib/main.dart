@@ -72,7 +72,7 @@ class _MainContainerState extends State<MainContainer> {
       setState(() {
         _isWebViewReady = true;
       });
-      // Delay slightly to ensure smooth transition
+      // Delay to ensure WebView is actually rendered before hiding splash
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
           setState(() {
@@ -86,11 +86,15 @@ class _MainContainerState extends State<MainContainer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF050816),
       body: Stack(
         children: [
-          WebViewPage(
-            url: widget.url,
-            onPageFinished: _onWebViewReady,
+          Offstage(
+            offstage: false,
+            child: WebViewPage(
+              url: widget.url,
+              onPageFinished: _onWebViewReady,
+            ),
           ),
           if (_showSplash)
             SplashScreen(
@@ -118,20 +122,9 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-
-    _bounceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-
-    _blinkController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 1),
-    )..repeat(reverse: true);
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+    _bounceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
+    _blinkController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
   }
 
   @override
@@ -286,14 +279,13 @@ class _WebViewPageState extends State<WebViewPage> {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   double _progress = 0;
   bool _isOffline = false;
-  bool _isWebViewReady = false;       // tracks whether WebView has finished first load
-  String? _pendingDeepLinkUrl;        // URL to navigate to once WebView is ready
+  bool _isWebViewReady = false;
+  String? _pendingDeepLinkUrl;
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
 
-  static const _notificationTokenEndpoint =
-      'https://api.kryros.com/api/notifications/token/public';
+  static const _notificationTokenEndpoint = 'https://api.kryros.com/api/notifications/token/public';
 
   @override
   void initState() {
@@ -351,43 +343,31 @@ class _WebViewPageState extends State<WebViewPage> {
       await _registerTokens();
     });
 
-    // ── Local notifications (foreground) ──────────────────────────────────────
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('launcher_icon');
-    const DarwinInitializationSettings initializationSettingsIOS =
-        DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
-        );
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-      iOS: initializationSettingsIOS,
-    );
+    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('launcher_icon');
+    const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings(requestAlertPermission: true, requestBadgePermission: true, requestSoundPermission: true);
+    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) {
+      onDidReceiveNotificationResponse: (response) {
         if (response.payload != null && response.payload!.isNotEmpty) {
           _navigateToUrl(response.payload!);
         }
       },
     );
 
-    // ── App opened from a terminated state via notification ───────────────────
-    // getInitialMessage() fires BEFORE the WebView is ready; queue the URL.
     RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
-      final String? url = initialMessage.data['url'] ?? initialMessage.data['link'];
+      final String? url = initialMessage.data['url'] ?? initialMessage.data['link'] ?? initialMessage.data['click_action'];
       if (url != null && url.isNotEmpty) {
         _pendingDeepLinkUrl = url;
       }
     }
 
-    // ── App in foreground — show local notification with payload ──────────────
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((message) {
       final RemoteNotification? notification = message.notification;
       if (notification != null) {
-        final String? payload = message.data['url'] ?? message.data['link'];
+        final String? payload = message.data['url'] ?? message.data['link'] ?? message.data['click_action'];
         flutterLocalNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
@@ -400,27 +380,21 @@ class _WebViewPageState extends State<WebViewPage> {
               priority: Priority.high,
               icon: 'launcher_icon',
             ),
-            iOS: DarwinNotificationDetails(
-              presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
-            ),
+            iOS: DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
           ),
           payload: (payload != null && payload.isNotEmpty) ? payload : null,
         );
       }
     });
 
-    // ── App in background, user taps notification ─────────────────────────────
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      final String? url = message.data['url'] ?? message.data['link'];
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final String? url = message.data['url'] ?? message.data['link'] ?? message.data['click_action'];
       if (url != null && url.isNotEmpty) {
         _navigateToUrl(url);
       }
     });
   }
 
-  /// Navigate to [url] immediately if the WebView is ready, otherwise queue it.
   void _navigateToUrl(String url) {
     if (_isWebViewReady && _webViewController != null) {
       _loadUrl(url);
@@ -441,16 +415,16 @@ class _WebViewPageState extends State<WebViewPage> {
       final response = await request.close();
       await response.drain();
     } catch (_) {
-      // A transient network failure is retried on token refresh and page load.
     } finally {
       client.close(force: true);
     }
   }
 
   void _loadUrl(String url) {
-    final target = Uri.tryParse(url)?.hasScheme == true
-        ? url
-        : Uri.parse(widget.url).resolve(url).toString();
+    String target = url;
+    if (!Uri.parse(url).hasScheme) {
+      target = Uri.parse(widget.url).resolve(url).toString();
+    }
     _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
@@ -459,9 +433,6 @@ class _WebViewPageState extends State<WebViewPage> {
     if (token == null || _webViewController == null) return;
     await _registerNativeToken(token);
     final encodedToken = jsonEncode(token);
-    // Set window.kryrosIsNativeApp = true so the website JS skips re-registering
-    // this token as platform='web', which would overwrite the correct 'admin_android'/'ios'
-    // platform value already sent via the native API.
     await _webViewController?.evaluateJavascript(source: '''
       window.kryrosIsNativeApp = true;
       window.kryrosNativeFcmToken = $encodedToken;
@@ -498,15 +469,15 @@ class _WebViewPageState extends State<WebViewPage> {
                       initialUrlRequest: URLRequest(url: WebUri(widget.url)),
                       initialSettings: InAppWebViewSettings(
                         javaScriptEnabled: true,
+                        domStorageEnabled: true,
+                        databaseEnabled: true,
                         useShouldOverrideUrlLoading: true,
                         useOnDownloadStart: true,
                         allowFileAccessFromFileURLs: true,
                         allowUniversalAccessFromFileURLs: true,
                         verticalScrollBarEnabled: false,
                         horizontalScrollBarEnabled: false,
-                        transparentBackground: true,
-                        domStorageEnabled: true,
-                        databaseEnabled: true,
+                        transparentBackground: false,
                         mediaPlaybackRequiresUserGesture: false,
                         javaScriptCanOpenWindowsAutomatically: true,
                         cacheEnabled: true,
@@ -516,6 +487,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
                         mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                         allowContentAccess: true,
+                        hardwareAcceleration: true,
                       ),
                       pullToRefreshController: _pullToRefreshController,
                       onWebViewCreated: (controller) {
@@ -537,13 +509,12 @@ class _WebViewPageState extends State<WebViewPage> {
                         widget.onPageFinished();
                         _registerTokens();
 
-                        // Mark WebView as ready and flush any pending deep-link navigation
                         if (!_isWebViewReady) {
                           _isWebViewReady = true;
                           if (_pendingDeepLinkUrl != null) {
                             final pending = _pendingDeepLinkUrl!;
                             _pendingDeepLinkUrl = null;
-                            Future.delayed(const Duration(milliseconds: 500), () {
+                            Future.delayed(const Duration(milliseconds: 1500), () {
                               if (mounted) _loadUrl(pending);
                             });
                           }
