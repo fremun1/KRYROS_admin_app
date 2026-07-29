@@ -16,9 +16,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
-// ─── FIX #1 ───────────────────────────────────────────────────────────────────
-// Top-level variable so the terminated-app deep link survives until the WebView
-// is ready to handle it.
 String? _globalPendingDeepLink;
 
 void main() async {
@@ -30,9 +27,6 @@ void main() async {
     debugPrint("Firebase initialization failed: $e");
   }
 
-  // ─── FIX #2 ─────────────────────────────────────────────────────────────────
-  // Capture the terminated-app deep link BEFORE runApp() so it is available
-  // when the WebView's onLoadStop fires for the first time.
   try {
     final RemoteMessage? initialMessage =
         await FirebaseMessaging.instance.getInitialMessage();
@@ -51,9 +45,14 @@ void main() async {
     debugPrint("getInitialMessage failed: $e");
   }
 
-  // Request notification permissions for Android 13+
   if (Platform.isAndroid) {
     await Permission.notification.request();
+    // Request storage and camera for admin panel uploads
+    await [
+      Permission.camera,
+      Permission.photos,
+      Permission.videos,
+    ].request();
   }
   
   runApp(const KryrosAdminApp());
@@ -68,12 +67,12 @@ class KryrosAdminApp extends StatelessWidget {
       title: 'KRYROS Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xFF27B9AF),
+        primaryColor: const Color(0xFFC0151B), // KRYROS RED
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF27B9AF),
-          primary: const Color(0xFF27B9AF),
-          surface: const Color(0xFF050816),
+          seedColor: const Color(0xFFC0151B),
+          primary: const Color(0xFFC0151B),
+          surface: Colors.white,
         ),
       ),
       home: const MainContainer(url: 'https://admin.kryros.com'),
@@ -111,7 +110,7 @@ class _MainContainerState extends State<MainContainer> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
+      backgroundColor: Colors.white,
       body: Stack(
         children: [
           Offstage(
@@ -162,8 +161,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFF27B9AF);
-    const backgroundColor = Color(0xFF050816);
+    const primaryColor = Color(0xFFC0151B); // KRYROS RED
+    const backgroundColor = Colors.white; // WHITE BACKGROUND
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -247,7 +246,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 child: const Text(
                   'KRYROS ADMIN',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: primaryColor,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 4.0,
@@ -318,8 +317,8 @@ class _WebViewPageState extends State<WebViewPage> {
     _checkConnectivity();
     _pullToRefreshController = PullToRefreshController(
       settings: PullToRefreshSettings(
-        color: const Color(0xFF27B9AF),
-        backgroundColor: const Color(0xFF050816),
+        color: const Color(0xFFC0151B),
+        backgroundColor: Colors.white,
       ),
       onRefresh: () async {
         if (Platform.isAndroid) {
@@ -382,10 +381,6 @@ class _WebViewPageState extends State<WebViewPage> {
       },
     );
 
-    // ─── FIX #2 (continued) ────────────────────────────────────────────────────
-    // getInitialMessage() is now called in main() before runApp().
-    // Do NOT call it again here.
-
     FirebaseMessaging.onMessage.listen((message) {
       final RemoteNotification? notification = message.notification;
       if (notification != null) {
@@ -423,8 +418,6 @@ class _WebViewPageState extends State<WebViewPage> {
     });
   }
 
-  // ─── FIX #3 ─────────────────────────────────────────────────────────────────
-  // Write to the global pending link when the WebView is not yet ready.
   void _navigateToUrl(String url) {
     if (_isWebViewReady && _webViewController != null) {
       _loadUrl(url);
@@ -449,8 +442,6 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
-  // ─── FIX #4 ─────────────────────────────────────────────────────────────────
-  // Corrected URL resolution — no double-resolve, proper query string handling.
   void _loadUrl(String url) {
     if (url.isEmpty) return;
     String target = url;
@@ -489,14 +480,14 @@ class _WebViewPageState extends State<WebViewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF050816),
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             if (_progress < 1.0 && !_isOffline)
               LinearProgressIndicator(
                 value: _progress,
-                color: const Color(0xFF27B9AF),
+                color: const Color(0xFFC0151B),
                 backgroundColor: Colors.transparent,
                 minHeight: 2,
               ),
@@ -530,7 +521,7 @@ class _WebViewPageState extends State<WebViewPage> {
                         clearCache: false,
                         supportZoom: false,
                         preferredContentMode: UserPreferredContentMode.MOBILE,
-                        userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+                        userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KryrosAdminApp",
                         mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                         allowContentAccess: true,
                         hardwareAcceleration: true,
@@ -559,7 +550,6 @@ class _WebViewPageState extends State<WebViewPage> {
                           _isWebViewReady = true;
                         }
 
-                        // ─── FIX #1 + #2 (consumption) ──────────────────────
                         if (_globalPendingDeepLink != null) {
                           final pending = _globalPendingDeepLink!;
                           final currentUrl = url?.toString() ?? '';
@@ -600,10 +590,28 @@ class _WebViewPageState extends State<WebViewPage> {
                       },
                       shouldOverrideUrlLoading: (controller, navigationAction) async {
                         var uri = navigationAction.request.url;
-                        if (uri != null && !["http", "https", "file", "chrome", "data", "javascript", "about"].contains(uri.scheme)) {
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            return NavigationActionPolicy.CANCEL;
+                        if (uri != null) {
+                          final String urlString = uri.toString();
+                          debugPrint("Admin Intercepted URL loading: $urlString");
+                          
+                          // Handle WhatsApp, Mail, and Phone links
+                          if (urlString.startsWith("whatsapp://") || 
+                              urlString.startsWith("https://wa.me/") || 
+                              urlString.startsWith("mailto:") || 
+                              urlString.startsWith("tel:")) {
+                            debugPrint("Admin Launching external app for: $urlString");
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              return NavigationActionPolicy.CANCEL;
+                            }
+                          }
+                          
+                          // Handle generic non-http schemes
+                          if (!["http", "https", "file", "chrome", "data", "javascript", "about"].contains(uri.scheme)) {
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                              return NavigationActionPolicy.CANCEL;
+                            }
                           }
                         }
                         return NavigationActionPolicy.ALLOW;
@@ -612,26 +620,26 @@ class _WebViewPageState extends State<WebViewPage> {
                   ),
                   if (_isOffline)
                     Container(
-                      color: const Color(0xFF050816),
+                      color: Colors.white,
                       child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.wifi_off, color: Colors.white, size: 64),
+                            const Icon(Icons.wifi_off, color: Color(0xFFC0151B), size: 64),
                             const SizedBox(height: 16),
                             const Text(
                               'No Internet Connection',
-                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Color(0xFFC0151B), fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                             const SizedBox(height: 8),
                             const Text(
                               'Please check your network settings.',
-                              style: TextStyle(color: Colors.white70),
+                              style: TextStyle(color: Colors.black54),
                             ),
                             const SizedBox(height: 24),
                             ElevatedButton(
                               onPressed: () => _webViewController?.reload(),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF27B9AF)),
+                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC0151B)),
                               child: const Text('Retry', style: TextStyle(color: Colors.white)),
                             ),
                           ],
