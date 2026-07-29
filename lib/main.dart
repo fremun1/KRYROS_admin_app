@@ -16,6 +16,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
+// ─── FIX #1 ───────────────────────────────────────────────────────────────────
+// Top-level variable so the terminated-app deep link survives until the WebView
+// is ready to handle it.
+String? _globalPendingDeepLink;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
@@ -24,7 +29,28 @@ void main() async {
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
   }
-  
+
+  // ─── FIX #2 ─────────────────────────────────────────────────────────────────
+  // Capture the terminated-app deep link BEFORE runApp() so it is available
+  // when the WebView's onLoadStop fires for the first time.
+  try {
+    final RemoteMessage? initialMessage =
+        await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      final String? url = initialMessage.data['url'] ??
+          initialMessage.data['link'] ??
+          (initialMessage.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
+              ? initialMessage.data['click_action']
+              : null);
+      if (url != null && url.isNotEmpty) {
+        _globalPendingDeepLink = url;
+        debugPrint("Terminated-app deep link captured at startup: $url");
+      }
+    }
+  } catch (e) {
+    debugPrint("getInitialMessage failed: $e");
+  }
+
   // Request notification permissions for Android 13+
   if (Platform.isAndroid) {
     await Permission.notification.request();
@@ -72,7 +98,6 @@ class _MainContainerState extends State<MainContainer> {
       setState(() {
         _isWebViewReady = true;
       });
-      // Delay to ensure WebView is actually rendered before hiding splash
       Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
           setState(() {
@@ -280,7 +305,6 @@ class _WebViewPageState extends State<WebViewPage> {
   double _progress = 0;
   bool _isOffline = false;
   bool _isWebViewReady = false;
-  String? _pendingDeepLinkUrl;
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -351,23 +375,24 @@ class _WebViewPageState extends State<WebViewPage> {
       initializationSettings,
       onDidReceiveNotificationResponse: (response) {
         if (response.payload != null && response.payload!.isNotEmpty) {
-          _navigateToUrl(response.payload!);
+          Future.delayed(const Duration(milliseconds: 500), () {
+            _navigateToUrl(response.payload!);
+          });
         }
       },
     );
 
-    RemoteMessage? initialMessage = await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      final String? url = initialMessage.data['url'] ?? initialMessage.data['link'] ?? initialMessage.data['click_action'];
-      if (url != null && url.isNotEmpty) {
-        _pendingDeepLinkUrl = url;
-      }
-    }
+    // ─── FIX #2 (continued) ────────────────────────────────────────────────────
+    // getInitialMessage() is now called in main() before runApp().
+    // Do NOT call it again here.
 
     FirebaseMessaging.onMessage.listen((message) {
       final RemoteNotification? notification = message.notification;
       if (notification != null) {
-        final String? payload = message.data['url'] ?? message.data['link'] ?? message.data['click_action'];
+        final String? payload = message.data['url'] ?? message.data['link'] ??
+            (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
+                ? message.data['click_action']
+                : null);
         flutterLocalNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
@@ -388,18 +413,23 @@ class _WebViewPageState extends State<WebViewPage> {
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final String? url = message.data['url'] ?? message.data['link'] ?? message.data['click_action'];
+      final String? url = message.data['url'] ?? message.data['link'] ??
+          (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
+              ? message.data['click_action']
+              : null);
       if (url != null && url.isNotEmpty) {
         _navigateToUrl(url);
       }
     });
   }
 
+  // ─── FIX #3 ─────────────────────────────────────────────────────────────────
+  // Write to the global pending link when the WebView is not yet ready.
   void _navigateToUrl(String url) {
     if (_isWebViewReady && _webViewController != null) {
       _loadUrl(url);
     } else {
-      _pendingDeepLinkUrl = url;
+      _globalPendingDeepLink = url;
     }
   }
 
@@ -414,17 +444,33 @@ class _WebViewPageState extends State<WebViewPage> {
       }));
       final response = await request.close();
       await response.drain();
-    } catch (_) {
-    } finally {
+    } catch (_) {} finally {
       client.close(force: true);
     }
   }
 
+  // ─── FIX #4 ─────────────────────────────────────────────────────────────────
+  // Corrected URL resolution — no double-resolve, proper query string handling.
   void _loadUrl(String url) {
+    if (url.isEmpty) return;
     String target = url;
     if (!Uri.parse(url).hasScheme) {
-      target = Uri.parse(widget.url).resolve(url).toString();
+      try {
+        final baseUri = Uri.parse(widget.url);
+        if (url.contains('?')) {
+          final parts = url.split('?');
+          final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
+          target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
+        } else {
+          final path = url.startsWith('/') ? url : '/$url';
+          target = baseUri.replace(path: path, query: null, fragment: null).toString();
+        }
+      } catch (e) {
+        debugPrint("Error resolving URL: $e");
+        target = widget.url + (url.startsWith('/') ? url : '/$url');
+      }
     }
+    debugPrint("Admin WebView loading: $target");
     _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
@@ -511,9 +557,29 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         if (!_isWebViewReady) {
                           _isWebViewReady = true;
-                          if (_pendingDeepLinkUrl != null) {
-                            final pending = _pendingDeepLinkUrl!;
-                            _pendingDeepLinkUrl = null;
+                        }
+
+                        // ─── FIX #1 + #2 (consumption) ──────────────────────
+                        if (_globalPendingDeepLink != null) {
+                          final pending = _globalPendingDeepLink!;
+                          final currentUrl = url?.toString() ?? '';
+
+                          String resolvedPending = pending;
+                          if (!pending.startsWith('http')) {
+                            final path = pending.startsWith('/') ? pending : '/$pending';
+                            try {
+                              resolvedPending = Uri.parse(widget.url)
+                                  .replace(path: path.split('?')[0], query: path.contains('?') ? path.split('?')[1] : null)
+                                  .toString();
+                            } catch (_) {}
+                          }
+
+                          if (currentUrl == resolvedPending || currentUrl.startsWith(resolvedPending)) {
+                            debugPrint("Already on target page ($currentUrl), clearing pending link");
+                            _globalPendingDeepLink = null;
+                          } else {
+                            _globalPendingDeepLink = null;
+                            debugPrint("Processing pending deep link: $pending");
                             Future.delayed(const Duration(milliseconds: 1500), () {
                               if (mounted) _loadUrl(pending);
                             });
