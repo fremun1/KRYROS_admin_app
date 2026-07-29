@@ -369,8 +369,15 @@ class _WebViewPageState extends State<WebViewPage> {
     if (url.isEmpty) return;
 
     String target = url;
+    
+    // If it's a relative path, ensure it starts with /
     if (!url.startsWith('http') && !url.startsWith('/')) {
       target = '/$url';
+    }
+
+    // Fix common admin URL patterns
+    if (target.contains('/admin/orders/')) {
+      target = target.replaceFirst('/admin', '');
     }
 
     if (_isWebViewReady && _webViewController != null) {
