@@ -426,43 +426,46 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
+  void _loadUrl(String url) {
+    if (_webViewController != null) {
+      final baseUri = Uri.parse('https://admin.kryros.com');
+      String target;
+      
+      if (url.startsWith('http')) {
+        target = url;
+      } else {
+        final path = url.startsWith('/') ? url : '/$url';
+        try {
+          if (path.contains('?')) {
+            final parts = path.split('?');
+            final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
+            target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
+          } else {
+            final cleanPath = path.startsWith('/') ? path : '/$path';
+            target = baseUri.replace(path: cleanPath, query: null, fragment: null).toString();
+          }
+        } catch (e) {
+          debugPrint("Error resolving URL: $e");
+          target = 'https://admin.kryros.com' + (path.startsWith('/') ? path : '/$path');
+        }
+      }
+      debugPrint("Admin WebView loading: $target");
+      _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
+    }
+  }
+
   Future<void> _registerNativeToken(String token) async {
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse(_notificationTokenEndpoint));
-      request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
-        'token': token,
-        'platform': Platform.isIOS ? 'ios' : 'admin_android',
-      }));
-      final response = await request.close();
-      await response.drain();
-    } catch (_) {} finally {
-      client.close(force: true);
+      request.headers.set('content-type', 'application/json');
+      request.add(utf8.encode(jsonEncode({'token': token, 'platform': 'android'})));
+      await request.close();
+    } catch (e) {
+      debugPrint("Public token registration failed: $e");
+    } finally {
+      client.close();
     }
-  }
-
-  void _loadUrl(String url) {
-    if (url.isEmpty) return;
-    String target = url;
-    if (!Uri.parse(url).hasScheme) {
-      try {
-        final baseUri = Uri.parse(widget.url);
-        if (url.contains('?')) {
-          final parts = url.split('?');
-          final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
-          target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
-        } else {
-          final path = url.startsWith('/') ? url : '/$url';
-          target = baseUri.replace(path: path, query: null, fragment: null).toString();
-        }
-      } catch (e) {
-        debugPrint("Error resolving URL: $e");
-        target = widget.url + (url.startsWith('/') ? url : '/$url');
-      }
-    }
-    debugPrint("Admin WebView loading: $target");
-    _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
   Future<void> _registerTokens() async {
@@ -552,28 +555,11 @@ class _WebViewPageState extends State<WebViewPage> {
 
                         if (_globalPendingDeepLink != null) {
                           final pending = _globalPendingDeepLink!;
-                          final currentUrl = url?.toString() ?? '';
-
-                          String resolvedPending = pending;
-                          if (!pending.startsWith('http')) {
-                            final path = pending.startsWith('/') ? pending : '/$pending';
-                            try {
-                              resolvedPending = Uri.parse(widget.url)
-                                  .replace(path: path.split('?')[0], query: path.contains('?') ? path.split('?')[1] : null)
-                                  .toString();
-                            } catch (_) {}
-                          }
-
-                          if (currentUrl == resolvedPending || currentUrl.startsWith(resolvedPending)) {
-                            debugPrint("Already on target page ($currentUrl), clearing pending link");
-                            _globalPendingDeepLink = null;
-                          } else {
-                            _globalPendingDeepLink = null;
-                            debugPrint("Processing pending deep link: $pending");
-                            Future.delayed(const Duration(milliseconds: 1500), () {
-                              if (mounted) _loadUrl(pending);
-                            });
-                          }
+                          _globalPendingDeepLink = null;
+                          debugPrint("Processing pending deep link: $pending");
+                          Future.delayed(const Duration(milliseconds: 1500), () {
+                            if (mounted) _loadUrl(pending);
+                          });
                         }
                       },
                       onReceivedError: (controller, request, error) {
