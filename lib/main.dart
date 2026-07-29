@@ -17,6 +17,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
+// Holds a deep-link URL that arrived before the WebView was ready.
 String? _globalPendingDeepLink;
 
 void main() async {
@@ -28,6 +29,7 @@ void main() async {
     debugPrint("Firebase initialization failed: $e");
   }
 
+  // Capture deep link from a terminated-app notification tap.
   try {
     final RemoteMessage? initialMessage =
         await FirebaseMessaging.instance.getInitialMessage();
@@ -252,9 +254,15 @@ class _WebViewPageState extends State<WebViewPage> {
   double _progress = 0;
   bool _isOffline = false;
   bool _isWebViewReady = false;
+  // Track whether the initial homepage load has completed so we only consume
+  // the pending deep link after the app is truly ready (not mid-load).
+  bool _initialPageLoaded = false;
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
+
+  // Always register via the public endpoint (no auth required) so the token
+  // is saved with isAdmin=true immediately on app launch.
   static const _notificationTokenEndpoint = 'https://api.kryros.com/api/notifications/token/public';
 
   @override
@@ -354,6 +362,7 @@ class _WebViewPageState extends State<WebViewPage> {
       }
     });
 
+    // Background notification tap (app was in background, not terminated).
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       final String? url = message.data['url'] ?? message.data['link'] ??
           (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null);
@@ -375,14 +384,15 @@ class _WebViewPageState extends State<WebViewPage> {
       target = '/$url';
     }
 
-    // Fix common admin URL patterns
-    if (target.contains('/admin/orders/')) {
+    // Strip /admin prefix from backend-generated admin URLs (e.g. /admin/orders/id → /orders/id)
+    if (target.startsWith('/admin/')) {
       target = target.replaceFirst('/admin', '');
     }
 
     if (_isWebViewReady && _webViewController != null) {
       _loadUrl(target);
     } else {
+      // WebView not ready yet — store and consume after initial page loads.
       _globalPendingDeepLink = target;
     }
   }
@@ -396,6 +406,9 @@ class _WebViewPageState extends State<WebViewPage> {
     return filePath;
   }
 
+  /// Register this device as an admin device using the public endpoint.
+  /// Using the public endpoint (with isAdmin=true) ensures the flag is always
+  /// set, regardless of whether the admin is logged in at the time.
   Future<void> _registerAdminToken(String token) async {
     final client = HttpClient();
     try {
@@ -404,12 +417,55 @@ class _WebViewPageState extends State<WebViewPage> {
       request.write(jsonEncode({
         'token': token, 
         'platform': Platform.isIOS ? 'ios' : 'android',
-        'isAdmin': true
+        'isAdmin': true,
       }));
       final response = await request.close();
       await response.drain();
       debugPrint("Registered device as ADMIN with token: $token");
-    } catch (_) {} finally { client.close(force: true); }
+    } catch (e) {
+      debugPrint("Failed to register admin token: $e");
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// After login, also link the FCM token to the admin user account so
+  /// the backend can target by userId as well.  We call the authenticated
+  /// endpoint here, but the public registration (with isAdmin=true) already
+  /// happened at app launch, so the isAdmin flag is preserved on the server.
+  Future<void> _syncTokenWithAdmin() async {
+    try {
+      final String? token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+
+      // Extract auth token from cookies
+      final cookieManager = CookieManager.instance();
+      final cookies = await cookieManager.getCookies(url: WebUri(widget.url));
+      final tokenCookie = cookies.firstWhere(
+        (c) => c.name == 'kryros_token' || c.name == 'kryros_admin_token',
+        orElse: () => Cookie(name: '', value: ''),
+      );
+
+      if (tokenCookie.value.isNotEmpty) {
+        debugPrint("Syncing FCM token with authenticated admin...");
+        // Post to the backend API directly (not through the admin panel proxy)
+        // to avoid any Next.js middleware interference.
+        await http.post(
+          Uri.parse('https://api.kryros.com/api/notifications/token'),
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer ${tokenCookie.value}",
+          },
+          body: jsonEncode({
+            "token": token,
+            "platform": Platform.isIOS ? "ios" : "android",
+          }),
+        );
+        debugPrint("FCM token synced with admin user account");
+      }
+    } catch (e) {
+      debugPrint("Error syncing token with admin: $e");
+    }
   }
 
   void _loadUrl(String url) {
@@ -438,38 +494,6 @@ class _WebViewPageState extends State<WebViewPage> {
     _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
-  Future<void> _syncTokenWithAdmin() async {
-    try {
-      final String? token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
-
-      // Extract token from cookies to see if we are authenticated
-      final cookieManager = CookieManager.instance();
-      final cookies = await cookieManager.getCookies(url: WebUri(widget.url));
-      final hasToken = cookies.any((c) => c.name == 'kryros_token' || c.name == 'token');
-
-      if (hasToken) {
-        debugPrint("Syncing FCM token with authenticated admin...");
-        final String endpoint = "${widget.url.replaceAll(RegExp(r'/$'), '')}/api/notifications/token";
-        final String? authToken = cookies.firstWhere((c) => c.name == 'kryros_token' || c.name == 'token').value;
-
-        await http.post(
-          Uri.parse(endpoint),
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer $authToken",
-          },
-          body: jsonEncode({
-            "token": token,
-            "platform": Theme.of(context).platform == TargetPlatform.iOS ? "ios" : "android",
-          }),
-        );
-      }
-    } catch (e) {
-      debugPrint("Error syncing token with admin: $e");
-    }
-  }
-
   Future<void> _handleExternalLink(Uri uri) async {
     final String urlString = uri.toString();
     debugPrint("Intercepted external link: $urlString");
@@ -477,10 +501,8 @@ class _WebViewPageState extends State<WebViewPage> {
     // 1. Aggressive WhatsApp check (schemes and domains)
     if (uri.scheme == 'whatsapp' || uri.host.contains('wa.me') || uri.host.contains('whatsapp.com')) {
       try {
-        // Try launching as external application
         bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
         if (!launched && (uri.host.contains('wa.me') || uri.host.contains('whatsapp.com'))) {
-          // If wa.me link fails to launch app, try forcing it as an external browser link
           await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
         }
       } catch (e) {
@@ -553,18 +575,28 @@ class _WebViewPageState extends State<WebViewPage> {
                   _pullToRefreshController?.endRefreshing();
                   widget.onPageFinished();
 
-                  // Sync FCM token with authenticated admin user if we are on a likely post-login page
                   if (url != null) {
                     final urlStr = url.toString();
+
+                    // Sync FCM token with authenticated admin user on post-login pages
                     if (urlStr.contains('/dashboard') || urlStr.contains('/orders') || urlStr.contains('/users')) {
                       _syncTokenWithAdmin();
                     }
-                  }
-                  
-                  if (_globalPendingDeepLink != null) {
-                    final path = _globalPendingDeepLink!;
-                    _globalPendingDeepLink = null;
-                    _loadUrl(path);
+
+                    // Consume the pending deep link ONLY after the initial homepage
+                    // has finished loading. This prevents the deep link from being
+                    // swallowed by the homepage load itself.
+                    if (!_initialPageLoaded) {
+                      _initialPageLoaded = true;
+                      if (_globalPendingDeepLink != null) {
+                        final path = _globalPendingDeepLink!;
+                        _globalPendingDeepLink = null;
+                        // Small delay to let the page fully settle before navigating
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          _loadUrl(path);
+                        });
+                      }
+                    }
                   }
                 },
                 onProgressChanged: (controller, progress) {
