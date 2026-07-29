@@ -321,6 +321,26 @@ class _WebViewPageState extends State<WebViewPage> {
       },
     );
 
+    // Create notification channels for Android to listen to both admin and user notifications
+    const AndroidNotificationChannel adminChannel = AndroidNotificationChannel(
+      'kryros_admin_notifications',
+      'KRYROS Admin Notifications',
+      description: 'Notifications for KRYROS admins',
+      importance: Importance.max,
+      enableVibration: true,
+      playSound: true,
+    );
+    const AndroidNotificationChannel userChannel = AndroidNotificationChannel(
+      'kryros_notifications',
+      'KRYROS User Notifications',
+      description: 'Notifications for KRYROS users',
+      importance: Importance.max,
+      enableVibration: true,
+      playSound: true,
+    );
+    await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(adminChannel);
+    await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(userChannel);
+
     FirebaseMessaging.onMessage.listen((message) async {
       final RemoteNotification? notification = message.notification;
       if (notification != null) {
@@ -410,20 +430,24 @@ class _WebViewPageState extends State<WebViewPage> {
   /// Using the public endpoint (with isAdmin=true) ensures the flag is always
   /// set, regardless of whether the admin is logged in at the time.
   Future<void> _registerAdminToken(String token) async {
+    final platform = Platform.isIOS ? 'ios' : 'android';
+    debugPrint('[FCM_REGISTRATION] Admin app registering token with platform: $platform');
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse(_notificationTokenEndpoint));
       request.headers.contentType = ContentType.json;
-      request.write(jsonEncode({
+      final payload = {
         'token': token, 
-        'platform': Platform.isIOS ? 'ios' : 'android',
+        'platform': platform,
         'isAdmin': true,
-      }));
+      };
+      debugPrint('[FCM_PAYLOAD] Sending: ${jsonEncode(payload)}');
+      request.write(jsonEncode(payload));
       final response = await request.close();
       await response.drain();
-      debugPrint("Registered device as ADMIN with token: $token");
+      debugPrint('[FCM_REGISTERED_SUCCESS] Admin device registered with platform: $platform, isAdmin: true');
     } catch (e) {
-      debugPrint("Failed to register admin token: $e");
+      debugPrint('[FCM_REGISTRATION_ERROR] Failed to register admin token: $e');
     } finally {
       client.close(force: true);
     }
