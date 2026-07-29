@@ -6,11 +6,12 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-// Background message handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -33,10 +34,8 @@ void main() async {
     if (initialMessage != null) {
       final String? url = initialMessage.data['url'] ??
           initialMessage.data['link'] ??
-          (initialMessage.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
-              ? initialMessage.data['click_action']
-              : null);
-      if (url != null && url.isNotEmpty) {
+          initialMessage.data['click_action'];
+      if (url != null && url.isNotEmpty && url != 'FLUTTER_NOTIFICATION_CLICK') {
         _globalPendingDeepLink = url;
         debugPrint("Terminated-app deep link captured at startup: $url");
       }
@@ -47,20 +46,16 @@ void main() async {
 
   if (Platform.isAndroid) {
     await Permission.notification.request();
-    // Request storage and camera for admin panel uploads
-    await [
-      Permission.camera,
-      Permission.photos,
-      Permission.videos,
-    ].request();
+    await Permission.camera.request();
+    await Permission.storage.request();
+    await Permission.photos.request();
+    await Permission.videos.request();
   }
-  
   runApp(const KryrosAdminApp());
 }
 
 class KryrosAdminApp extends StatelessWidget {
   const KryrosAdminApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -83,7 +78,6 @@ class KryrosAdminApp extends StatelessWidget {
 class MainContainer extends StatefulWidget {
   final String url;
   const MainContainer({super.key, required this.url});
-
   @override
   State<MainContainer> createState() => _MainContainerState();
 }
@@ -91,13 +85,14 @@ class MainContainer extends StatefulWidget {
 class _MainContainerState extends State<MainContainer> {
   bool _showSplash = true;
   bool _isWebViewReady = false;
-
+  
   void _onWebViewReady() {
     if (mounted && _showSplash) {
+      debugPrint("WebView ready, starting splash transition");
       setState(() {
         _isWebViewReady = true;
       });
-      Future.delayed(const Duration(milliseconds: 2000), () {
+      Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) {
           setState(() {
             _showSplash = false;
@@ -133,7 +128,6 @@ class _MainContainerState extends State<MainContainer> {
 class SplashScreen extends StatefulWidget {
   final bool isTransitioning;
   const SplashScreen({super.key, this.isTransitioning = false});
-
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
@@ -142,7 +136,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late AnimationController _pulseController;
   late AnimationController _bounceController;
   late AnimationController _blinkController;
-
   @override
   void initState() {
     super.initState();
@@ -150,7 +143,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _bounceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
     _blinkController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
   }
-
   @override
   void dispose() {
     _pulseController.dispose();
@@ -158,12 +150,10 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     _blinkController.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     const primaryColor = Color(0xFFC0151B); // KRYROS RED
     const backgroundColor = Colors.white; // WHITE BACKGROUND
-
     return Scaffold(
       backgroundColor: backgroundColor,
       body: AnimatedOpacity(
@@ -184,9 +174,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                         double progress = (_pulseController.value - delay);
                         if (progress < 0) progress += 1.0;
                         final scale = 0.85 + (progress * 0.4);
-                        final opacity = progress < 0.6 
-                            ? (0.9 - (progress / 0.6 * 0.55))
-                            : (0.35 - ((progress - 0.6) / 0.4 * 0.35));
+                        final opacity = progress < 0.6 ? (0.9 - (progress / 0.6 * 0.55)) : (0.35 - ((progress - 0.6) / 0.4 * 0.35));
                         return Transform.scale(
                           scale: scale,
                           child: Opacity(
@@ -196,10 +184,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               height: 54.0 + (index + 1) * 26.0,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: primaryColor.withOpacity(0.5 - (index + 1) * 0.12),
-                                  width: index == 0 ? 2.0 : 1.5,
-                                ),
+                                border: Border.all(color: primaryColor.withOpacity(0.5 - (index + 1) * 0.12), width: index == 0 ? 2.0 : 1.5),
                               ),
                             ),
                           ),
@@ -208,27 +193,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                     );
                   }),
                   FadeTransition(
-                    opacity: Tween<double>(begin: 1.0, end: 0.4).animate(
-                      CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut),
-                    ),
+                    opacity: Tween<double>(begin: 1.0, end: 0.4).animate(CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut)),
                     child: Container(
                       padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: primaryColor.withOpacity(0.8),
-                          width: 2.0,
-                        ),
-                      ),
+                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor.withOpacity(0.8), width: 2.0)),
                       child: ClipOval(
                         child: Image.asset(
                           'assets/logo_circular.png',
-                          width: 70,
-                          height: 70,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(Icons.circle, color: primaryColor, size: 70);
-                          },
+                          width: 70, height: 70, fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.circle, color: primaryColor, size: 70),
                         ),
                       ),
                     ),
@@ -237,21 +210,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
               ),
               const SizedBox(height: 32),
               FadeTransition(
-                opacity: Tween<double>(begin: 1.0, end: 0.5).animate(
-                  CurvedAnimation(
-                    parent: _blinkController,
-                    curve: const Interval(0.2, 1.0, curve: Curves.easeInOut),
-                  ),
-                ),
-                child: const Text(
-                  'KRYROS ADMIN',
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 4.0,
-                  ),
-                ),
+                opacity: Tween<double>(begin: 1.0, end: 0.5).animate(CurvedAnimation(parent: _blinkController, curve: const Interval(0.2, 1.0, curve: Curves.easeInOut))),
+                child: const Text('KRYROS ADMIN', style: TextStyle(color: primaryColor, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 4.0)),
               ),
               const SizedBox(height: 24),
               Row(
@@ -264,18 +224,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       double progress = (_bounceController.value - delay);
                       if (progress < 0) progress += 1.0;
                       final offset = -8.0 * (1.0 - (progress - 0.5).abs() * 2.0).clamp(0.0, 1.0);
-                      return Transform.translate(
-                        offset: Offset(0, offset),
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: const BoxDecoration(
-                            color: primaryColor,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      );
+                      return Transform.translate(offset: Offset(0, offset), child: Container(width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: const BoxDecoration(color: primaryColor, shape: BoxShape.circle)));
                     },
                   );
                 }),
@@ -292,7 +241,6 @@ class WebViewPage extends StatefulWidget {
   final String url;
   final VoidCallback onPageFinished;
   const WebViewPage({super.key, required this.url, required this.onPageFinished});
-
   @override
   State<WebViewPage> createState() => _WebViewPageState();
 }
@@ -307,7 +255,6 @@ class _WebViewPageState extends State<WebViewPage> {
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
-
   static const _notificationTokenEndpoint = 'https://api.kryros.com/api/notifications/token/public';
 
   @override
@@ -316,26 +263,15 @@ class _WebViewPageState extends State<WebViewPage> {
     _setupNotifications();
     _checkConnectivity();
     _pullToRefreshController = PullToRefreshController(
-      settings: PullToRefreshSettings(
-        color: const Color(0xFFC0151B),
-        backgroundColor: Colors.white,
-      ),
+      settings: PullToRefreshSettings(color: const Color(0xFFC0151B), backgroundColor: Colors.white),
       onRefresh: () async {
-        if (Platform.isAndroid) {
-          _webViewController?.reload();
-        } else if (Platform.isIOS) {
-          _webViewController?.loadUrl(urlRequest: URLRequest(url: await _webViewController?.getUrl()));
-        }
+        if (Platform.isAndroid) _webViewController?.reload();
+        else if (Platform.isIOS) _webViewController?.loadUrl(urlRequest: URLRequest(url: await _webViewController?.getUrl()));
       },
     );
-
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
-      setState(() {
-        _isOffline = results.contains(ConnectivityResult.none);
-      });
-      if (!_isOffline) {
-        _webViewController?.reload();
-      }
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      setState(() => _isOffline = results.contains(ConnectivityResult.none));
+      if (!_isOffline) _webViewController?.reload();
     });
   }
 
@@ -348,22 +284,17 @@ class _WebViewPageState extends State<WebViewPage> {
 
   Future<void> _checkConnectivity() async {
     var results = await Connectivity().checkConnectivity();
-    setState(() {
-      _isOffline = results.contains(ConnectivityResult.none);
-    });
+    setState(() => _isOffline = results.contains(ConnectivityResult.none));
   }
 
   Future<void> _setupNotifications() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
     await messaging.requestPermission(alert: true, badge: true, sound: true);
     _fcmToken = await messaging.getToken();
-    if (_fcmToken != null) {
-      await _registerNativeToken(_fcmToken!);
-    }
+    if (_fcmToken != null) await _registerAdminToken(_fcmToken!);
     _tokenRefreshSubscription = messaging.onTokenRefresh.listen((token) async {
       _fcmToken = token;
-      await _registerNativeToken(token);
-      await _registerTokens();
+      await _registerAdminToken(token);
     });
 
     const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('launcher_icon');
@@ -373,6 +304,7 @@ class _WebViewPageState extends State<WebViewPage> {
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (response) {
+        debugPrint("Notification tapped (foreground): ${response.payload}");
         if (response.payload != null && response.payload!.isNotEmpty) {
           Future.delayed(const Duration(milliseconds: 500), () {
             _navigateToUrl(response.payload!);
@@ -381,26 +313,41 @@ class _WebViewPageState extends State<WebViewPage> {
       },
     );
 
-    FirebaseMessaging.onMessage.listen((message) {
+    FirebaseMessaging.onMessage.listen((message) async {
       final RemoteNotification? notification = message.notification;
       if (notification != null) {
+        final String? imageUrl = message.data['imageUrl'] ?? message.data['image'] ?? notification.android?.imageUrl;
         final String? payload = message.data['url'] ?? message.data['link'] ??
-            (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
-                ? message.data['click_action']
-                : null);
-        flutterLocalNotificationsPlugin.show(
+            (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null);
+        debugPrint("Foreground notification received, payload: $payload");
+        BigPictureStyleInformation? bigPictureStyleInformation;
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          try {
+            final String filePath = await _downloadAndSaveFile(imageUrl, 'notif_banner_${notification.hashCode}');
+            bigPictureStyleInformation = BigPictureStyleInformation(
+              FilePathAndroidBitmap(filePath),
+              largeIcon: FilePathAndroidBitmap(filePath),
+              contentTitle: notification.title,
+              summaryText: notification.body,
+            );
+          } catch (e) {
+            debugPrint('Failed to download notification banner image: $e');
+          }
+        }
+        await flutterLocalNotificationsPlugin.show(
           notification.hashCode,
           notification.title,
           notification.body,
-          const NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               'kryros_admin_notifications',
               'KRYROS Admin Notifications',
               importance: Importance.max,
               priority: Priority.high,
               icon: 'launcher_icon',
+              styleInformation: bigPictureStyleInformation,
             ),
-            iOS: DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
+            iOS: const DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
           ),
           payload: (payload != null && payload.isNotEmpty) ? payload : null,
         );
@@ -409,9 +356,8 @@ class _WebViewPageState extends State<WebViewPage> {
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       final String? url = message.data['url'] ?? message.data['link'] ??
-          (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK'
-              ? message.data['click_action']
-              : null);
+          (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null);
+      debugPrint("Background notification tapped, url: $url");
       if (url != null && url.isNotEmpty) {
         _navigateToUrl(url);
       }
@@ -419,223 +365,190 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _navigateToUrl(String url) {
+    debugPrint("Routing to URL: $url");
+    if (url.isEmpty) return;
+
+    String target = url;
+    if (!url.startsWith('http') && !url.startsWith('/')) {
+      target = '/$url';
+    }
+
     if (_isWebViewReady && _webViewController != null) {
-      _loadUrl(url);
+      _loadUrl(target);
     } else {
-      _globalPendingDeepLink = url;
+      _globalPendingDeepLink = target;
     }
   }
 
-  void _loadUrl(String url) {
-    if (_webViewController != null) {
-      final baseUri = Uri.parse('https://admin.kryros.com');
-      String target;
-      
-      if (url.startsWith('http')) {
-        target = url;
-      } else {
-        final path = url.startsWith('/') ? url : '/$url';
-        try {
-          if (path.contains('?')) {
-            final parts = path.split('?');
-            final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
-            target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
-          } else {
-            final cleanPath = path.startsWith('/') ? path : '/$path';
-            target = baseUri.replace(path: cleanPath, query: null, fragment: null).toString();
-          }
-        } catch (e) {
-          debugPrint("Error resolving URL: $e");
-          target = 'https://admin.kryros.com' + (path.startsWith('/') ? path : '/$path');
-        }
-      }
-      debugPrint("Admin WebView loading: $target");
-      _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
-    }
+  Future<String> _downloadAndSaveFile(String url, String fileName) async {
+    final Directory directory = await getApplicationDocumentsDirectory();
+    final String filePath = '${directory.path}/$fileName';
+    final http.Response response = await http.get(Uri.parse(url));
+    final File file = File(filePath);
+    await file.writeAsBytes(response.bodyBytes);
+    return filePath;
   }
 
-  Future<void> _registerNativeToken(String token) async {
+  Future<void> _registerAdminToken(String token) async {
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse(_notificationTokenEndpoint));
-      request.headers.set('content-type', 'application/json');
-      request.add(utf8.encode(jsonEncode({'token': token, 'platform': 'android'})));
-      await request.close();
-    } catch (e) {
-      debugPrint("Public token registration failed: $e");
-    } finally {
-      client.close();
-    }
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({
+        'token': token, 
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'isAdmin': true
+      }));
+      final response = await request.close();
+      await response.drain();
+      debugPrint("Registered device as ADMIN with token: $token");
+    } catch (_) {} finally { client.close(force: true); }
   }
 
-  Future<void> _registerTokens() async {
-    final token = _fcmToken;
-    if (token == null || _webViewController == null) return;
-    await _registerNativeToken(token);
-    final encodedToken = jsonEncode(token);
-    await _webViewController?.evaluateJavascript(source: '''
-      window.kryrosIsNativeApp = true;
-      window.kryrosNativeFcmToken = $encodedToken;
-      window.dispatchEvent(new CustomEvent('kryros:native-fcm-token', { detail: $encodedToken }));
-    ''');
+  void _loadUrl(String url) {
+    if (url.isEmpty) return;
+    debugPrint("WebView loading: $url");
+    
+    String target = url;
+    
+    if (url.startsWith('http')) {
+      target = url;
+    } else {
+      try {
+        final baseUri = Uri.parse(widget.url);
+        final path = url.startsWith('/') ? url : '/$url';
+        if (url.contains('?')) {
+          final parts = url.split('?');
+          final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
+          target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
+        } else {
+          target = baseUri.replace(path: path, query: null, fragment: null).toString();
+        }
+      } catch (e) {
+        target = widget.url + (url.startsWith('/') ? url : '/$url');
+      }
+    }
+    _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
+  }
+
+  Future<void> _handleExternalLink(Uri uri) async {
+    final String urlString = uri.toString();
+    debugPrint("Intercepted external link: $urlString");
+    
+    // 1. Aggressive WhatsApp check (schemes and domains)
+    if (uri.scheme == 'whatsapp' || uri.host.contains('wa.me') || uri.host.contains('whatsapp.com')) {
+      try {
+        // Try launching as external application
+        bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+        if (!launched && (uri.host.contains('wa.me') || uri.host.contains('whatsapp.com'))) {
+          // If wa.me link fails to launch app, try forcing it as an external browser link
+          await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+        }
+      } catch (e) {
+        debugPrint("Error launching WhatsApp: $e");
+      }
+      return;
+    }
+
+    // 2. Handle other common external schemes
+    if (["tel", "sms", "mailto", "intent"].contains(uri.scheme)) {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: SafeArea(
-        child: Column(
-          children: [
-            if (_progress < 1.0 && !_isOffline)
-              LinearProgressIndicator(
-                value: _progress,
-                color: const Color(0xFFC0151B),
-                backgroundColor: Colors.transparent,
-                minHeight: 2,
+        child: WillPopScope(
+          onWillPop: () async {
+            if (_webViewController != null && await _webViewController!.canGoBack()) {
+              _webViewController!.goBack();
+              return false;
+            }
+            return true;
+          },
+          child: Stack(
+            children: [
+              InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+                pullToRefreshController: _pullToRefreshController,
+                initialOptions: InAppWebViewGroupOptions(
+                  crossPlatform: InAppWebViewOptions(
+                    useShouldOverrideUrlLoading: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                    javaScriptEnabled: true,
+                    userAgent: "KRYROS_ADMIN_APP_ANDROID",
+                    supportZoom: false,
+                  ),
+                  android: AndroidInAppWebViewOptions(
+                    useHybridComposition: true,
+                    domStorageEnabled: true,
+                  ),
+                ),
+                onWebViewCreated: (controller) {
+                  _webViewController = controller;
+                  _isWebViewReady = true;
+                },
+                shouldOverrideUrlLoading: (controller, navigationAction) async {
+                  var uri = navigationAction.request.url!;
+                  debugPrint("Checking URL: ${uri.toString()}");
+                  
+                  // Intercept non-http(s) schemes
+                  if (!["http", "https", "file", "chrome", "data", "javascript", "about"].contains(uri.scheme)) {
+                    await _handleExternalLink(uri);
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                  
+                  // Aggressively intercept wa.me and whatsapp.com links even if they use https
+                  if (uri.host.contains("wa.me") || uri.host.contains("whatsapp.com")) {
+                    await _handleExternalLink(uri);
+                    return NavigationActionPolicy.CANCEL;
+                  }
+
+                  return NavigationActionPolicy.ALLOW;
+                },
+                onLoadStop: (controller, url) async {
+                  _pullToRefreshController?.endRefreshing();
+                  widget.onPageFinished();
+                  
+                  if (_globalPendingDeepLink != null) {
+                    final path = _globalPendingDeepLink!;
+                    _globalPendingDeepLink = null;
+                    _loadUrl(path);
+                  }
+                },
+                onProgressChanged: (controller, progress) {
+                  if (progress == 100) _pullToRefreshController?.endRefreshing();
+                  setState(() => _progress = progress / 100);
+                },
               ),
-            Expanded(
-              child: Stack(
-                children: [
-                  PopScope(
-                    canPop: false,
-                    onPopInvoked: (didPop) async {
-                      if (didPop) return;
-                      if (await _webViewController?.canGoBack() ?? false) {
-                        _webViewController?.goBack();
-                      }
-                    },
-                    child: InAppWebView(
-                      initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-                      initialSettings: InAppWebViewSettings(
-                        javaScriptEnabled: true,
-                        domStorageEnabled: true,
-                        databaseEnabled: true,
-                        useShouldOverrideUrlLoading: true,
-                        useOnDownloadStart: true,
-                        allowFileAccessFromFileURLs: true,
-                        allowUniversalAccessFromFileURLs: true,
-                        verticalScrollBarEnabled: false,
-                        horizontalScrollBarEnabled: false,
-                        transparentBackground: false,
-                        mediaPlaybackRequiresUserGesture: false,
-                        javaScriptCanOpenWindowsAutomatically: true,
-                        cacheEnabled: true,
-                        clearCache: false,
-                        supportZoom: false,
-                        preferredContentMode: UserPreferredContentMode.MOBILE,
-                        userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KryrosAdminApp",
-                        mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                        allowContentAccess: true,
-                        hardwareAcceleration: true,
-                      ),
-                      pullToRefreshController: _pullToRefreshController,
-                      onWebViewCreated: (controller) {
-                        _webViewController = controller;
-                        controller.addJavaScriptHandler(
-                          handlerName: 'MobileBridge',
-                          callback: (args) {
-                            if (args.isNotEmpty && args[0] == 'admin_logged_in') {
-                              _registerTokens();
-                            }
-                          },
-                        );
-                      },
-                      onLoadStop: (controller, url) async {
-                        _pullToRefreshController?.endRefreshing();
-                        setState(() {
-                          _progress = 1.0;
-                        });
-                        widget.onPageFinished();
-                        _registerTokens();
-
-                        if (!_isWebViewReady) {
-                          _isWebViewReady = true;
-                        }
-
-                        if (_globalPendingDeepLink != null) {
-                          final pending = _globalPendingDeepLink!;
-                          _globalPendingDeepLink = null;
-                          debugPrint("Processing pending deep link: $pending");
-                          Future.delayed(const Duration(milliseconds: 1500), () {
-                            if (mounted) _loadUrl(pending);
-                          });
-                        }
-                      },
-                      onReceivedError: (controller, request, error) {
-                        debugPrint("WebView Error: ${error.description}");
-                        _pullToRefreshController?.endRefreshing();
-                      },
-                      onProgressChanged: (controller, progress) {
-                        if (progress == 100) {
-                          _pullToRefreshController?.endRefreshing();
-                        }
-                        setState(() {
-                          _progress = progress / 100;
-                        });
-                      },
-                      shouldOverrideUrlLoading: (controller, navigationAction) async {
-                        var uri = navigationAction.request.url;
-                        if (uri != null) {
-                          final String urlString = uri.toString();
-                          debugPrint("Admin Intercepted URL loading: $urlString");
-                          
-                          // Handle WhatsApp, Mail, and Phone links
-                          if (urlString.startsWith("whatsapp://") || 
-                              urlString.startsWith("https://wa.me/") || 
-                              urlString.startsWith("mailto:") || 
-                              urlString.startsWith("tel:")) {
-                            debugPrint("Admin Launching external app for: $urlString");
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              return NavigationActionPolicy.CANCEL;
-                            }
-                          }
-                          
-                          // Handle generic non-http schemes
-                          if (!["http", "https", "file", "chrome", "data", "javascript", "about"].contains(uri.scheme)) {
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                              return NavigationActionPolicy.CANCEL;
-                            }
-                          }
-                        }
-                        return NavigationActionPolicy.ALLOW;
-                      },
+              if (_progress < 1.0)
+                LinearProgressIndicator(value: _progress, color: const Color(0xFFC0151B), backgroundColor: Colors.white),
+              if (_isOffline)
+                Container(
+                  color: Colors.white,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.wifi_off, size: 80, color: Color(0xFFC0151B)),
+                        const SizedBox(height: 16),
+                        const Text("No Internet Connection", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: () => _webViewController?.reload(),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC0151B)),
+                          child: const Text("Retry", style: TextStyle(color: Colors.white)),
+                        ),
+                      ],
                     ),
                   ),
-                  if (_isOffline)
-                    Container(
-                      color: Colors.white,
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.wifi_off, color: Color(0xFFC0151B), size: 64),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'No Internet Connection',
-                              style: TextStyle(color: Color(0xFFC0151B), fontSize: 18, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Please check your network settings.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: () => _webViewController?.reload(),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC0151B)),
-                              child: const Text('Retry', style: TextStyle(color: Colors.white)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );
