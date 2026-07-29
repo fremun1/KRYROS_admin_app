@@ -578,10 +578,14 @@ class _WebViewPageState extends State<WebViewPage> {
                   if (url != null) {
                     final urlStr = url.toString();
 
-                    // Sync FCM token with authenticated admin user on post-login pages
-                    if (urlStr.contains('/dashboard') || urlStr.contains('/orders') || urlStr.contains('/users')) {
-                      _syncTokenWithAdmin();
-                    }
+    // Sync FCM token with authenticated admin user on post-login pages
+    if (urlStr.contains('/dashboard') || 
+        urlStr.contains('/orders') || 
+        urlStr.contains('/users') || 
+        urlStr.contains('/notifications') ||
+        urlStr.contains('/settings')) {
+      _syncTokenWithAdmin();
+    }
 
                     // Consume the pending deep link ONLY after the initial homepage
                     // has finished loading. This prevents the deep link from being
