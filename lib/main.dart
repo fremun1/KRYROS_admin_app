@@ -368,8 +368,8 @@ class _WebViewPageState extends State<WebViewPage> {
           notification.body,
           NotificationDetails(
             android: AndroidNotificationDetails(
-              'kryros_admin_notifications',
-              'KRYROS Admin Notifications',
+              message.data['isAdminAlert'] == 'true' ? 'kryros_admin_notifications' : 'kryros_notifications',
+              message.data['isAdminAlert'] == 'true' ? 'KRYROS Admin Notifications' : 'KRYROS Notifications',
               importance: Importance.max,
               priority: Priority.high,
               icon: 'launcher_icon',
