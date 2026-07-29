@@ -431,6 +431,38 @@ class _WebViewPageState extends State<WebViewPage> {
     _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
   }
 
+  Future<void> _syncTokenWithAdmin() async {
+    try {
+      final String? token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+
+      // Extract token from cookies to see if we are authenticated
+      final cookieManager = CookieManager.instance();
+      final cookies = await cookieManager.getCookies(url: WebUri(widget.url));
+      final hasToken = cookies.any((c) => c.name == 'kryros_token' || c.name == 'token');
+
+      if (hasToken) {
+        debugPrint("Syncing FCM token with authenticated admin...");
+        final String endpoint = "${widget.url.replaceAll(RegExp(r'/$'), '')}/api/notifications/token";
+        final String? authToken = cookies.firstWhere((c) => c.name == 'kryros_token' || c.name == 'token').value;
+
+        await http.post(
+          Uri.parse(endpoint),
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $authToken",
+          },
+          body: jsonEncode({
+            "token": token,
+            "platform": Theme.of(context).platform == TargetPlatform.iOS ? "ios" : "android",
+          }),
+        );
+      }
+    } catch (e) {
+      debugPrint("Error syncing token with admin: $e");
+    }
+  }
+
   Future<void> _handleExternalLink(Uri uri) async {
     final String urlString = uri.toString();
     debugPrint("Intercepted external link: $urlString");
@@ -513,6 +545,14 @@ class _WebViewPageState extends State<WebViewPage> {
                 onLoadStop: (controller, url) async {
                   _pullToRefreshController?.endRefreshing();
                   widget.onPageFinished();
+
+                  // Sync FCM token with authenticated admin user if we are on a likely post-login page
+                  if (url != null) {
+                    final urlStr = url.toString();
+                    if (urlStr.contains('/dashboard') || urlStr.contains('/orders') || urlStr.contains('/users')) {
+                      _syncTokenWithAdmin();
+                    }
+                  }
                   
                   if (_globalPendingDeepLink != null) {
                     final path = _globalPendingDeepLink!;
