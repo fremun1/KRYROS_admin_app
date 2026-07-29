@@ -323,9 +323,9 @@ class _WebViewPageState extends State<WebViewPage> {
 
     // Create notification channels for Android to listen to both admin and user notifications
     const AndroidNotificationChannel adminChannel = AndroidNotificationChannel(
-      'kryros_admin_notifications',
-      'KRYROS Admin Notifications',
-      description: 'Notifications for KRYROS admins',
+      'kryros_notifications',
+      'KRYROS Notifications',
+      description: 'Notifications for KRYROS',
       importance: Importance.max,
       enableVibration: true,
       playSound: true,
@@ -346,7 +346,8 @@ class _WebViewPageState extends State<WebViewPage> {
       if (notification != null) {
         final String? imageUrl = message.data['imageUrl'] ?? message.data['image'] ?? notification.android?.imageUrl;
         final String? payload = message.data['url'] ?? message.data['link'] ??
-            (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null);
+            (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null) ??
+            message.data['url']; // Double check url if not already picked up
         debugPrint("Foreground notification received, payload: $payload");
         BigPictureStyleInformation? bigPictureStyleInformation;
         if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -368,8 +369,8 @@ class _WebViewPageState extends State<WebViewPage> {
           notification.body,
           NotificationDetails(
             android: AndroidNotificationDetails(
-              message.data['isAdminAlert'] == 'true' ? 'kryros_admin_notifications' : 'kryros_notifications',
-              message.data['isAdminAlert'] == 'true' ? 'KRYROS Admin Notifications' : 'KRYROS Notifications',
+              message.data['isAdminAlert'] == 'true' ? 'kryros_notifications' : 'kryros_notifications',
+              message.data['isAdminAlert'] == 'true' ? 'KRYROS Notifications' : 'KRYROS Notifications',
               importance: Importance.max,
               priority: Priority.high,
               icon: 'launcher_icon',
