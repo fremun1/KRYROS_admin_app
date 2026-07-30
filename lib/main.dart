@@ -604,13 +604,23 @@ class _WebViewPageState extends State<WebViewPage> {
                     final urlStr = url.toString();
 
     // Sync FCM token with authenticated admin user on post-login pages
-    if (urlStr.contains('/dashboard') || 
-        urlStr.contains('/orders') || 
-        urlStr.contains('/users') || 
-        urlStr.contains('/notifications') ||
-        urlStr.contains('/settings')) {
-      _syncTokenWithAdmin();
-    }
+	    if (urlStr.contains('/dashboard') || 
+	        urlStr.contains('/orders') || 
+	        urlStr.contains('/users') || 
+	        urlStr.contains('/notifications') ||
+	        urlStr.contains('/settings')) {
+	      _syncTokenWithAdmin();
+	    }
+	
+	    // Inject native token into web view so the admin panel can use it
+	    if (_fcmToken != null) {
+	      final platform = Platform.isIOS ? 'ios' : 'android';
+	      controller.evaluateJavascript(source: """
+	        window.kryrosNativeFcmToken = '$_fcmToken';
+	        window.kryrosNativeFcmPlatform = '$platform';
+	        window.dispatchEvent(new CustomEvent('kryros:native-fcm-token', { detail: '$_fcmToken' }));
+	      """);
+	    }
 
                     // Consume the pending deep link ONLY after the initial homepage
                     // has finished loading. This prevents the deep link from being
