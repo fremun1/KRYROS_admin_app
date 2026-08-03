@@ -333,6 +333,12 @@ class _WebViewPageState extends State<WebViewPage> {
             supportZoom: true,
             useWideViewPort: true,
             loadWithOverviewMode: true,
+            userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+            mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+            safeBrowsingEnabled: false,
+            allowFileAccessFromFileURLs: true,
+            allowUniversalAccessFromFileURLs: true,
+            thirdPartyCookiesEnabled: true,
           ),
           pullToRefreshController: _pullToRefreshController,
           onWebViewCreated: (controller) => _webViewController = controller,
@@ -350,6 +356,16 @@ class _WebViewPageState extends State<WebViewPage> {
                 controller.loadUrl(urlRequest: URLRequest(url: WebUri(urlToLoad)));
               }
             }
+          },
+          onReceivedError: (controller, request, error) {
+            debugPrint("WebView Error: ${error.description}");
+            _pullToRefreshController?.endRefreshing();
+          },
+          onReceivedHttpError: (controller, request, errorResponse) {
+            debugPrint("HTTP Error: ${errorResponse.statusCode}");
+          },
+          onConsoleMessage: (controller, consoleMessage) {
+            debugPrint("Console: ${consoleMessage.message}");
           },
           onProgressChanged: (controller, progress) {
             if (progress == 100) _pullToRefreshController?.endRefreshing();
