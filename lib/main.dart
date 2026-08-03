@@ -85,6 +85,19 @@ class MainContainer extends StatefulWidget {
 class _MainContainerState extends State<MainContainer> {
   bool _showSplash = true;
   bool _isTransitioning = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-hide splash after 15 seconds even if WebView doesn't report ready
+    // This ensures the user isn't stuck on a blank screen forever
+    Future.delayed(const Duration(seconds: 15), () {
+      if (mounted && _showSplash) {
+        debugPrint("Splash timeout reached, forcing transition");
+        _onWebViewReady();
+      }
+    });
+  }
   
   void _onWebViewReady() {
     if (mounted && _showSplash && !_isTransitioning) {
@@ -339,7 +352,7 @@ class _WebViewPageState extends State<WebViewPage> {
             supportZoom: true,
             useWideViewPort: true,
             loadWithOverviewMode: true,
-            userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KRYROS_ADMIN_APP",
+            userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KRYROS_MOBILE_APP",
             mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             safeBrowsingEnabled: false,
             allowFileAccessFromFileURLs: true,
