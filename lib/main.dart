@@ -109,12 +109,9 @@ class _MainContainerState extends State<MainContainer> {
       body: SafeArea(
         child: Stack(
           children: [
-            Offstage(
-              offstage: false,
-              child: WebViewPage(
-                url: widget.url,
-                onPageFinished: _onWebViewReady,
-              ),
+            WebViewPage(
+              url: widget.url,
+              onPageFinished: _onWebViewReady,
             ),
             if (_showSplash)
               SplashScreen(
@@ -325,7 +322,7 @@ class _WebViewPageState extends State<WebViewPage> {
             useShouldOverrideUrlLoading: true,
             mediaPlaybackRequiresUserGesture: false,
             allowsInlineMediaPlayback: true,
-            useHybridComposition: true,
+            useHybridComposition: false, // Changed to false to prevent blank screen issues on some devices
             allowsBackForwardNavigationGestures: true,
             javaScriptEnabled: true,
             domStorageEnabled: true,
@@ -333,7 +330,8 @@ class _WebViewPageState extends State<WebViewPage> {
             supportZoom: true,
             useWideViewPort: true,
             loadWithOverviewMode: true,
-            userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36",
+            // Added custom identifier to userAgent to allow middleware to recognize the app
+            userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KRYROS_ADMIN_APP",
             mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             safeBrowsingEnabled: false,
             allowFileAccessFromFileURLs: true,
