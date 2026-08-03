@@ -84,15 +84,16 @@ class MainContainer extends StatefulWidget {
 
 class _MainContainerState extends State<MainContainer> {
   bool _showSplash = true;
-  bool _isWebViewReady = false;
+  bool _isTransitioning = false;
   
   void _onWebViewReady() {
-    if (mounted && _showSplash) {
+    if (mounted && _showSplash && !_isTransitioning) {
       debugPrint("WebView ready, starting splash transition");
       setState(() {
-        _isWebViewReady = true;
+        _isTransitioning = true;
       });
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      // Delay to ensure the website content is rendered behind the splash
+      Future.delayed(const Duration(milliseconds: 2000), () {
         if (mounted) {
           setState(() {
             _showSplash = false;
@@ -115,7 +116,7 @@ class _MainContainerState extends State<MainContainer> {
             ),
             if (_showSplash)
               SplashScreen(
-                isTransitioning: _isWebViewReady,
+                isTransitioning: _isTransitioning,
               ),
           ],
         ),
@@ -130,14 +131,22 @@ class SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: AnimatedOpacity(
-        opacity: isTransitioning ? 0.0 : 1.0,
-        duration: const Duration(milliseconds: 800),
+    return AnimatedOpacity(
+      opacity: isTransitioning ? 0.0 : 1.0,
+      duration: const Duration(milliseconds: 1000),
+      child: Container(
+        color: Colors.white,
         child: const Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A237E)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // You can add your logo here if needed
+              // Image.asset('assets/logo.png', width: 150),
+              // SizedBox(height: 24),
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFC0151B)),
+              ),
+            ],
           ),
         ),
       ),
@@ -322,7 +331,7 @@ class _WebViewPageState extends State<WebViewPage> {
             useShouldOverrideUrlLoading: true,
             mediaPlaybackRequiresUserGesture: false,
             allowsInlineMediaPlayback: true,
-            useHybridComposition: false, // Changed to false to prevent blank screen issues on some devices
+            useHybridComposition: false,
             allowsBackForwardNavigationGestures: true,
             javaScriptEnabled: true,
             domStorageEnabled: true,
@@ -330,7 +339,6 @@ class _WebViewPageState extends State<WebViewPage> {
             supportZoom: true,
             useWideViewPort: true,
             loadWithOverviewMode: true,
-            // Added custom identifier to userAgent to allow middleware to recognize the app
             userAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36 KRYROS_ADMIN_APP",
             mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
             safeBrowsingEnabled: false,
@@ -347,6 +355,7 @@ class _WebViewPageState extends State<WebViewPage> {
             _pullToRefreshController?.endRefreshing();
             if (!_initialPageLoaded) {
               _initialPageLoaded = true;
+              _isWebViewReady = true;
               widget.onPageFinished();
               if (_globalPendingDeepLink != null) {
                 final urlToLoad = _globalPendingDeepLink!;
