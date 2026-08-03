@@ -144,7 +144,7 @@ class SplashScreen extends StatelessWidget {
               // Image.asset('assets/logo.png', width: 150),
               // SizedBox(height: 24),
               CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFC0151B)),
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A237E)),
               ),
             ],
           ),
