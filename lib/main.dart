@@ -17,7 +17,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
 }
 
-// Holds a deep-link URL that arrived before the WebView was ready.
 String? _globalPendingDeepLink;
 
 void main() async {
@@ -29,7 +28,6 @@ void main() async {
     debugPrint("Firebase initialization failed: $e");
   }
 
-  // Capture deep link from a terminated-app notification tap.
   try {
     final RemoteMessage? initialMessage =
         await FirebaseMessaging.instance.getInitialMessage();
@@ -64,7 +62,7 @@ class KryrosAdminApp extends StatelessWidget {
       title: 'KRYROS Admin',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primaryColor: const Color(0xFFC0151B), // KRYROS RED
+        primaryColor: const Color(0xFFC0151B),
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFC0151B),
@@ -127,111 +125,20 @@ class _MainContainerState extends State<MainContainer> {
   }
 }
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends StatelessWidget {
   final bool isTransitioning;
   const SplashScreen({super.key, this.isTransitioning = false});
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
 
-class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late AnimationController _bounceController;
-  late AnimationController _blinkController;
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
-    _bounceController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
-    _blinkController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
-  }
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _bounceController.dispose();
-    _blinkController.dispose();
-    super.dispose();
-  }
   @override
   Widget build(BuildContext context) {
-    const primaryColor = Color(0xFFC0151B); // KRYROS RED
-    const backgroundColor = Colors.white; // WHITE BACKGROUND
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: Colors.white,
       body: AnimatedOpacity(
-        opacity: widget.isTransitioning ? 0.0 : 1.0,
+        opacity: isTransitioning ? 0.0 : 1.0,
         duration: const Duration(milliseconds: 800),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  ...List.generate(3, (index) {
-                    return AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        final delay = index * 0.35;
-                        double progress = (_pulseController.value - delay);
-                        if (progress < 0) progress += 1.0;
-                        final scale = 0.85 + (progress * 0.4);
-                        final opacity = progress < 0.6 ? (0.9 - (progress / 0.6 * 0.55)) : (0.35 - ((progress - 0.6) / 0.4 * 0.35));
-                        return Transform.scale(
-                          scale: scale,
-                          child: Opacity(
-                            opacity: opacity.clamp(0.0, 1.0),
-                            child: Container(
-                              width: 54.0 + (index + 1) * 26.0,
-                              height: 54.0 + (index + 1) * 26.0,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: primaryColor.withOpacity(0.5 - (index + 1) * 0.12), width: index == 0 ? 2.0 : 1.5),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  }),
-                  FadeTransition(
-                    opacity: Tween<double>(begin: 1.0, end: 0.4).animate(CurvedAnimation(parent: _blinkController, curve: Curves.easeInOut)),
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: primaryColor.withOpacity(0.8), width: 2.0)),
-                      child: ClipOval(
-                        child: Image.asset(
-                          'assets/logo_circular.png',
-                          width: 70, height: 70, fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.circle, color: primaryColor, size: 70),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              FadeTransition(
-                opacity: Tween<double>(begin: 1.0, end: 0.5).animate(CurvedAnimation(parent: _blinkController, curve: const Interval(0.2, 1.0, curve: Curves.easeInOut))),
-                child: const Text('KRYROS ADMIN', style: TextStyle(color: primaryColor, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 4.0)),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  return AnimatedBuilder(
-                    animation: _bounceController,
-                    builder: (context, child) {
-                      final delay = index * 0.2;
-                      double progress = (_bounceController.value - delay);
-                      if (progress < 0) progress += 1.0;
-                      final offset = -8.0 * (1.0 - (progress - 0.5).abs() * 2.0).clamp(0.0, 1.0);
-                      return Transform.translate(offset: Offset(0, offset), child: Container(width: 6, height: 6, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: const BoxDecoration(color: primaryColor, shape: BoxShape.circle)));
-                    },
-                  );
-                }),
-              ),
-            ],
+        child: const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A237E)),
           ),
         ),
       ),
@@ -254,15 +161,10 @@ class _WebViewPageState extends State<WebViewPage> {
   double _progress = 0;
   bool _isOffline = false;
   bool _isWebViewReady = false;
-  // Track whether the initial homepage load has completed so we only consume
-  // the pending deep link after the app is truly ready (not mid-load).
   bool _initialPageLoaded = false;
   String? _fcmToken;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   StreamSubscription<String>? _tokenRefreshSubscription;
-
-  // Always register via the public endpoint (no auth required) so the token
-  // is saved with isAdmin=true immediately on app launch.
   static const _notificationTokenEndpoint = 'https://api.kryros.com/api/notifications/token/public';
 
   @override
@@ -321,7 +223,6 @@ class _WebViewPageState extends State<WebViewPage> {
       },
     );
 
-    // Create notification channels for Android to listen to both admin and user notifications
     const AndroidNotificationChannel adminChannel = AndroidNotificationChannel(
       'kryros_notifications',
       'KRYROS Notifications',
@@ -330,16 +231,7 @@ class _WebViewPageState extends State<WebViewPage> {
       enableVibration: true,
       playSound: true,
     );
-    const AndroidNotificationChannel userChannel = AndroidNotificationChannel(
-      'kryros_notifications',
-      'KRYROS User Notifications',
-      description: 'Notifications for KRYROS users',
-      importance: Importance.max,
-      enableVibration: true,
-      playSound: true,
-    );
     await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(adminChannel);
-    await flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(userChannel);
 
     FirebaseMessaging.onMessage.listen((message) async {
       final RemoteNotification? notification = message.notification;
@@ -347,7 +239,7 @@ class _WebViewPageState extends State<WebViewPage> {
         final String? imageUrl = message.data['imageUrl'] ?? message.data['image'] ?? notification.android?.imageUrl;
         final String? payload = message.data['url'] ?? message.data['link'] ??
             (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null) ??
-            message.data['url']; // Double check url if not already picked up
+            message.data['url'];
         debugPrint("Foreground notification received, payload: $payload");
         BigPictureStyleInformation? bigPictureStyleInformation;
         if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -369,8 +261,8 @@ class _WebViewPageState extends State<WebViewPage> {
           notification.body,
           NotificationDetails(
             android: AndroidNotificationDetails(
-              message.data['isAdminAlert'] == 'true' ? 'kryros_notifications' : 'kryros_notifications',
-              message.data['isAdminAlert'] == 'true' ? 'KRYROS Notifications' : 'KRYROS Notifications',
+              'kryros_notifications',
+              'KRYROS Notifications',
               importance: Importance.max,
               priority: Priority.high,
               icon: 'launcher_icon',
@@ -383,38 +275,24 @@ class _WebViewPageState extends State<WebViewPage> {
       }
     });
 
-    // Background notification tap (app was in background, not terminated).
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final String? url = message.data['url'] ?? message.data['link'] ??
-          (message.data['click_action'] != 'FLUTTER_NOTIFICATION_CLICK' ? message.data['click_action'] : null);
-      debugPrint("Background notification tapped, url: $url");
-      if (url != null && url.isNotEmpty) {
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      final String? url = message.data['url'] ?? message.data['link'] ?? message.data['click_action'];
+      if (url != null && url.isNotEmpty && url != 'FLUTTER_NOTIFICATION_CLICK') {
+        debugPrint("Notification tapped (background): $url");
         _navigateToUrl(url);
       }
     });
   }
 
-  void _navigateToUrl(String url) {
-    debugPrint("Routing to URL: $url");
-    if (url.isEmpty) return;
-
-    String target = url;
-    
-    // If it's a relative path, ensure it starts with /
-    if (!url.startsWith('http') && !url.startsWith('/')) {
-      target = '/$url';
-    }
-
-    // Strip /admin prefix from backend-generated admin URLs (e.g. /admin/orders/id → /orders/id)
-    if (target.startsWith('/admin/')) {
-      target = target.replaceFirst('/admin', '');
-    }
-
-    if (_isWebViewReady && _webViewController != null) {
-      _loadUrl(target);
-    } else {
-      // WebView not ready yet — store and consume after initial page loads.
-      _globalPendingDeepLink = target;
+  Future<void> _registerAdminToken(String token) async {
+    try {
+      await http.post(
+        Uri.parse(_notificationTokenEndpoint),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'token': token, 'platform': Platform.isAndroid ? 'android' : 'ios', 'isAdmin': true}),
+      );
+    } catch (e) {
+      debugPrint("Token registration failed: $e");
     }
   }
 
@@ -427,248 +305,71 @@ class _WebViewPageState extends State<WebViewPage> {
     return filePath;
   }
 
-  /// Register this device as an admin device using the public endpoint.
-  /// Using the public endpoint (with isAdmin=true) ensures the flag is always
-  /// set, regardless of whether the admin is logged in at the time.
-  Future<void> _registerAdminToken(String token) async {
-    final platform = Platform.isIOS ? 'ios' : 'android';
-    debugPrint('[FCM_REGISTRATION] Admin app registering token with platform: $platform');
-    final client = HttpClient();
-    try {
-      final request = await client.postUrl(Uri.parse(_notificationTokenEndpoint));
-      request.headers.contentType = ContentType.json;
-      final payload = {
-        'token': token, 
-        'platform': platform,
-        'isAdmin': true,
-      };
-      debugPrint('[FCM_PAYLOAD] Sending: ${jsonEncode(payload)}');
-      request.write(jsonEncode(payload));
-      final response = await request.close();
-      await response.drain();
-      debugPrint('[FCM_REGISTERED_SUCCESS] Admin device registered with platform: $platform, isAdmin: true');
-    } catch (e) {
-      debugPrint('[FCM_REGISTRATION_ERROR] Failed to register admin token: $e');
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  /// After login, also link the FCM token to the admin user account so
-  /// the backend can target by userId as well.  We call the authenticated
-  /// endpoint here, but the public registration (with isAdmin=true) already
-  /// happened at app launch, so the isAdmin flag is preserved on the server.
-  Future<void> _syncTokenWithAdmin() async {
-    try {
-      final String? token = await FirebaseMessaging.instance.getToken();
-      if (token == null) return;
-
-      // Extract auth token from cookies
-      final cookieManager = CookieManager.instance();
-      final cookies = await cookieManager.getCookies(url: WebUri(widget.url));
-      final tokenCookie = cookies.firstWhere(
-        (c) => c.name == 'kryros_token' || c.name == 'kryros_admin_token',
-        orElse: () => Cookie(name: '', value: ''),
-      );
-
-      if (tokenCookie.value.isNotEmpty) {
-        debugPrint("Syncing FCM token with authenticated admin...");
-        // Post to the backend API directly (not through the admin panel proxy)
-        // to avoid any Next.js middleware interference.
-        await http.post(
-          Uri.parse('https://api.kryros.com/api/notifications/token'),
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer ${tokenCookie.value}",
-          },
-          body: jsonEncode({
-            "token": token,
-            "platform": Platform.isIOS ? "ios" : "android",
-          }),
-        );
-        debugPrint("FCM token synced with admin user account");
-      }
-    } catch (e) {
-      debugPrint("Error syncing token with admin: $e");
-    }
-  }
-
-  void _loadUrl(String url) {
-    if (url.isEmpty) return;
-    debugPrint("WebView loading: $url");
-    
-    String target = url;
-    
-    if (url.startsWith('http')) {
-      target = url;
+  void _navigateToUrl(String url) {
+    if (_isWebViewReady && _webViewController != null) {
+      _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
     } else {
-      try {
-        final baseUri = Uri.parse(widget.url);
-        final path = url.startsWith('/') ? url : '/$url';
-        if (url.contains('?')) {
-          final parts = url.split('?');
-          final cleanPath = parts[0].startsWith('/') ? parts[0] : '/${parts[0]}';
-          target = baseUri.replace(path: cleanPath, query: parts[1], fragment: null).toString();
-        } else {
-          target = baseUri.replace(path: path, query: null, fragment: null).toString();
-        }
-      } catch (e) {
-        target = widget.url + (url.startsWith('/') ? url : '/$url');
-      }
-    }
-    _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(target)));
-  }
-
-  Future<void> _handleExternalLink(Uri uri) async {
-    final String urlString = uri.toString();
-    debugPrint("Intercepted external link: $urlString");
-    
-    // 1. Aggressive WhatsApp check (schemes and domains)
-    if (uri.scheme == 'whatsapp' || uri.host.contains('wa.me') || uri.host.contains('whatsapp.com')) {
-      try {
-        bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (!launched && (uri.host.contains('wa.me') || uri.host.contains('whatsapp.com'))) {
-          await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
-        }
-      } catch (e) {
-        debugPrint("Error launching WhatsApp: $e");
-      }
-      return;
-    }
-
-    // 2. Handle other common external schemes
-    if (["tel", "sms", "mailto", "intent"].contains(uri.scheme)) {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      _globalPendingDeepLink = url;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: WillPopScope(
-          onWillPop: () async {
-            if (_webViewController != null && await _webViewController!.canGoBack()) {
-              _webViewController!.goBack();
-              return false;
-            }
-            return true;
-          },
-          child: Stack(
-            children: [
-              InAppWebView(
-                initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-                pullToRefreshController: _pullToRefreshController,
-                initialOptions: InAppWebViewGroupOptions(
-                  crossPlatform: InAppWebViewOptions(
-                    useShouldOverrideUrlLoading: true,
-                    mediaPlaybackRequiresUserGesture: false,
-                    javaScriptEnabled: true,
-                    userAgent: "KRYROS_ADMIN_APP_ANDROID",
-                    supportZoom: false,
-                  ),
-                  android: AndroidInAppWebViewOptions(
-                    useHybridComposition: true,
-                    domStorageEnabled: true,
-                  ),
-                ),
-                onWebViewCreated: (controller) {
-                  _webViewController = controller;
-                  _isWebViewReady = true;
-                },
-                shouldOverrideUrlLoading: (controller, navigationAction) async {
-                  var uri = navigationAction.request.url!;
-                  debugPrint("Checking URL: ${uri.toString()}");
-                  
-                  // Intercept non-http(s) schemes
-                  if (!["http", "https", "file", "chrome", "data", "javascript", "about"].contains(uri.scheme)) {
-                    await _handleExternalLink(uri);
-                    return NavigationActionPolicy.CANCEL;
-                  }
-                  
-                  // Aggressively intercept wa.me and whatsapp.com links even if they use https
-                  if (uri.host.contains("wa.me") || uri.host.contains("whatsapp.com")) {
-                    await _handleExternalLink(uri);
-                    return NavigationActionPolicy.CANCEL;
-                  }
-
-                  return NavigationActionPolicy.ALLOW;
-                },
-                onLoadStop: (controller, url) async {
-                  _pullToRefreshController?.endRefreshing();
-                  widget.onPageFinished();
-
-                  if (url != null) {
-                    final urlStr = url.toString();
-
-    // Sync FCM token with authenticated admin user on post-login pages
-	    if (urlStr.contains('/dashboard') || 
-	        urlStr.contains('/orders') || 
-	        urlStr.contains('/users') || 
-	        urlStr.contains('/notifications') ||
-	        urlStr.contains('/settings')) {
-	      _syncTokenWithAdmin();
-	    }
-	
-	    // Inject native token into web view so the admin panel can use it
-	    if (_fcmToken != null) {
-	      final platform = Platform.isIOS ? 'ios' : 'android';
-	      controller.evaluateJavascript(source: """
-	        window.kryrosNativeFcmToken = '$_fcmToken';
-	        window.kryrosNativeFcmPlatform = '$platform';
-	        window.dispatchEvent(new CustomEvent('kryros:native-fcm-token', { detail: '$_fcmToken' }));
-	      """);
-	    }
-
-                    // Consume the pending deep link ONLY after the initial homepage
-                    // has finished loading. This prevents the deep link from being
-                    // swallowed by the homepage load itself.
-                    if (!_initialPageLoaded) {
-                      _initialPageLoaded = true;
-                      if (_globalPendingDeepLink != null) {
-                        final path = _globalPendingDeepLink!;
-                        _globalPendingDeepLink = null;
-                        // Small delay to let the page fully settle before navigating
-                        Future.delayed(const Duration(milliseconds: 300), () {
-                          _loadUrl(path);
-                        });
-                      }
-                    }
-                  }
-                },
-                onProgressChanged: (controller, progress) {
-                  if (progress == 100) _pullToRefreshController?.endRefreshing();
-                  setState(() => _progress = progress / 100);
-                },
-              ),
-              if (_progress < 1.0)
-                LinearProgressIndicator(value: _progress, color: const Color(0xFFC0151B), backgroundColor: Colors.white),
-              if (_isOffline)
-                Container(
-                  color: Colors.white,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.wifi_off, size: 80, color: Color(0xFFC0151B)),
-                        const SizedBox(height: 16),
-                        const Text("No Internet Connection", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: () => _webViewController?.reload(),
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFC0151B)),
-                          child: const Text("Retry", style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
+    return Stack(
+      children: [
+        InAppWebView(
+          initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+          initialSettings: InAppWebViewSettings(
+            useShouldOverrideUrlLoading: true,
+            mediaPlaybackRequiresUserGesture: false,
+            allowsInlineMediaPlayback: true,
+            useHybridComposition: true,
+            allowsBackForwardNavigationGestures: true,
           ),
+          pullToRefreshController: _pullToRefreshController,
+          onWebViewCreated: (controller) => _webViewController = controller,
+          onLoadStart: (controller, url) {
+            setState(() => _isWebViewReady = false);
+          },
+          onLoadStop: (controller, url) async {
+            _pullToRefreshController?.endRefreshing();
+            if (!_initialPageLoaded) {
+              _initialPageLoaded = true;
+              widget.onPageFinished();
+              if (_globalPendingDeepLink != null) {
+                final urlToLoad = _globalPendingDeepLink!;
+                _globalPendingDeepLink = null;
+                controller.loadUrl(urlRequest: URLRequest(url: WebUri(urlToLoad)));
+              }
+            }
+          },
+          onProgressChanged: (controller, progress) {
+            if (progress == 100) _pullToRefreshController?.endRefreshing();
+            setState(() => _progress = progress / 100);
+          },
         ),
-      ),
+        if (_progress < 1.0 && !_initialPageLoaded)
+          LinearProgressIndicator(value: _progress, color: const Color(0xFFC0151B), backgroundColor: Colors.white),
+        if (_isOffline)
+          Container(
+            color: Colors.white,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.wifi_off, size: 64, color: Color(0xFFC0151B)),
+                  const SizedBox(height: 16),
+                  const Text('No Internet Connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: () => _webViewController?.reload(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
